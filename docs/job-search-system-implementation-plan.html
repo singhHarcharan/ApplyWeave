@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Job Search System — Implementation Plan</title>
+  <style>
+    :root {
+      --ink: #16243a;
+      --muted: #536277;
+      --line: #dce4ec;
+      --paper: #fff;
+      --canvas: #f3f6fa;
+      --blue: #174ea6;
+      --blue-soft: #eaf2ff;
+      --teal: #087e76;
+      --teal-soft: #e5f5f1;
+      --gold: #946000;
+      --gold-soft: #fff5dc;
+      --rose: #a23848;
+      --rose-soft: #fff0f1;
+      --shadow: 0 18px 44px rgba(18, 37, 61, .07);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--canvas); color: var(--ink); font: 16px/1.62 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    a { color: var(--blue); text-underline-offset: 3px; }
+    a:hover { color: #0d3372; }
+    .shell { max-width: 1160px; margin: 0 auto; padding: 24px; }
+    .hero { padding: 52px 54px; border-radius: 22px; color: white; background: linear-gradient(125deg, #142743 0%, #214b82 67%, #15717c 100%); box-shadow: var(--shadow); }
+    .eyebrow { margin: 0 0 10px; color: #bdebe9; font-size: .75rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+    h1, h2, h3, h4 { line-height: 1.22; letter-spacing: -.025em; }
+    h1 { margin: 0; font-size: clamp(2.25rem, 4.5vw, 4.3rem); max-width: 750px; }
+    h2 { margin: 0 0 16px; font-size: clamp(1.6rem, 2.4vw, 2.15rem); }
+    h3 { margin: 0 0 10px; font-size: 1.18rem; }
+    h4 { margin: 0 0 6px; font-size: 1rem; }
+    p { margin: 0 0 14px; }
+    p:last-child { margin-bottom: 0; }
+    .hero .lead { max-width: 740px; margin: 18px 0 24px; color: #e3edf9; font-size: 1.12rem; }
+    .meta { display: flex; flex-wrap: wrap; gap: 9px; }
+    .meta span, .tag { display: inline-block; padding: 5px 10px; border-radius: 999px; font-size: .78rem; font-weight: 700; }
+    .meta span { border: 1px solid rgba(255,255,255,.34); background: rgba(255,255,255,.1); color: white; }
+    .layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 25px; align-items: start; margin-top: 24px; }
+    .toc { position: sticky; top: 20px; padding: 20px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); box-shadow: var(--shadow); }
+    .toc strong { display: block; margin-bottom: 9px; font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+    .toc a { display: block; padding: 7px 9px; border-radius: 8px; color: var(--ink); font-size: .9rem; text-decoration: none; }
+    .toc a:hover { background: var(--blue-soft); color: var(--blue); }
+    main { min-width: 0; }
+    section { margin-bottom: 24px; padding: 30px 34px; border: 1px solid var(--line); border-radius: 18px; background: var(--paper); box-shadow: var(--shadow); scroll-margin-top: 20px; }
+    .section-label { margin: 0 0 8px; color: var(--teal); font-size: .73rem; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
+    .intro { color: var(--muted); max-width: 780px; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px; }
+    .grid.three { grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .card { padding: 19px; border: 1px solid var(--line); border-radius: 13px; background: #fbfdff; }
+    .card p, .card li { font-size: .93rem; }
+    .number { display: inline-grid; place-items: center; width: 29px; height: 29px; margin-bottom: 12px; border-radius: 9px; background: var(--blue-soft); color: var(--blue); font-weight: 800; }
+    .tag.blue { color: var(--blue); background: var(--blue-soft); }
+    .tag.teal { color: var(--teal); background: var(--teal-soft); }
+    .tag.gold { color: var(--gold); background: var(--gold-soft); }
+    .tag.rose { color: var(--rose); background: var(--rose-soft); }
+    .flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 16px; border-radius: 12px; background: #eef5fb; }
+    .flow b { padding: 7px 10px; border-radius: 8px; background: white; font-size: .84rem; }
+    .flow i { color: #587595; font-style: normal; font-weight: 800; }
+    ul, ol { padding-left: 22px; margin: 8px 0 16px; }
+    li { padding-left: 2px; margin: 5px 0; }
+    .table-wrap { overflow-x: auto; margin: 14px 0 18px; border: 1px solid var(--line); border-radius: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: .91rem; }
+    th, td { padding: 12px 14px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+    th { color: #35506e; background: #f0f5fa; font-size: .78rem; letter-spacing: .025em; }
+    tr:last-child td { border-bottom: 0; }
+    code { padding: 2px 5px; border-radius: 5px; background: #eef2f6; color: #153b69; font-size: .86em; overflow-wrap: anywhere; }
+    .callout { padding: 16px 18px; margin: 15px 0; border-left: 4px solid var(--teal); border-radius: 0 10px 10px 0; background: var(--teal-soft); }
+    .callout.warning { border-color: #d29a2b; background: var(--gold-soft); }
+    .callout strong { display: block; margin-bottom: 3px; }
+    .small { color: var(--muted); font-size: .86rem; }
+    .timeline { display: grid; gap: 13px; }
+    .phase { display: grid; grid-template-columns: 105px minmax(0,1fr); gap: 14px; padding: 17px; border: 1px solid var(--line); border-radius: 12px; }
+    .phase .when { color: var(--blue); font-size: .83rem; font-weight: 800; }
+    .phase p { margin-bottom: 0; }
+    .checklist { list-style: none; padding: 0; }
+    .checklist li { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .checklist li:last-child { border-bottom: 0; }
+    .checklist li::before { content: "□"; color: var(--teal); font-size: 1.15rem; line-height: 1.2; }
+    .foot { padding: 22px 0 8px; color: var(--muted); font-size: .83rem; text-align: center; }
+    @media (max-width: 850px) { .layout { display: block; } .toc { position: static; margin-bottom: 20px; } .toc a { display: inline-block; } }
+    @media (max-width: 650px) { .shell { padding: 12px; } .hero { padding: 32px 25px; } section { padding: 24px 20px; } .grid, .grid.three { grid-template-columns: 1fr; } .phase { grid-template-columns: 1fr; gap: 3px; } }
+    @media print { body { background: white; font-size: 10pt; } .shell { max-width: none; padding: 0; } .hero { border-radius: 0; box-shadow: none; print-color-adjust: exact; } .layout { display: block; } .toc { display: none; } section { box-shadow: none; border-radius: 0; border-width: 0 0 1px; margin: 0; padding: 20px 0; break-inside: avoid; } a { color: inherit; } .card, .phase, .callout { break-inside: avoid; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="hero">
+      <p class="eyebrow">Personal job search system · implementation plan</p>
+      <h1>Track applications. Prepare answers. Fill forms faster.</h1>
+      <p class="lead">One plan for a Google Sheets application tracker, a resume-grounded application assistant, and a user-invoked Chrome helper for company application forms.</p>
+      <div class="meta"><span>Prepared 12 October 2026</span><span>Planning version 1.0</span><span>Chrome + Google Sheets</span><span>Owner: Harcharanpreet Singh</span></div>
+    </header>
+
+    <div class="layout">
+      <nav class="toc" aria-label="Document sections">
+        <strong>Contents</strong>
+        <a href="#summary">01 · Outcome and scope</a>
+        <a href="#architecture">02 · System design</a>
+        <a href="#tracker">03 · Google Sheets tracker</a>
+        <a href="#assistant">04 · Application assistant</a>
+        <a href="#formfill">05 · Chrome form helper</a>
+        <a href="#workflow">06 · Daily workflow</a>
+        <a href="#delivery">07 · Delivery sequence</a>
+        <a href="#acceptance">08 · Acceptance checks</a>
+        <a href="#decisions">09 · Decisions and risks</a>
+        <a href="#sources">10 · References</a>
+      </nav>
+
+      <main>
+        <section id="summary">
+          <p class="section-label">01 / Outcome and scope</p>
+          <h2>What this system should accomplish</h2>
+          <p class="intro">A useful first release should make every application easy to record, every follow-up visible, and repeated application questions quick to answer. You will find roles yourself on LinkedIn, Wellfound, and company career portals. The system begins when you choose a role.</p>
+          <div class="grid three">
+            <div class="card"><span class="number">1</span><h3>Application tracker</h3><p>One Google Sheet is the source of truth for roles, stages, next actions, follow-ups, and resume versions.</p></div>
+            <div class="card"><span class="number">2</span><h3>Application assistant</h3><p>Codex uses verified career facts and a pasted job description to recommend a resume and prepare truthful, tailored answers.</p></div>
+            <div class="card"><span class="number">3</span><h3>Chrome form helper</h3><p>A click-to-fill helper handles recurring fields on supported company portals, shows a review, and leaves final submission to you.</p></div>
+          </div>
+          <div class="callout"><strong>Known inputs</strong>Target roles: Software Development Engineer, Frontend Engineer, Backend Engineer, Full Stack Developer, AI Engineer, and MERN Developer. Planned final working day: <strong>11 November 2026</strong>. Planned availability: <strong>12 November 2026</strong>, unless an earlier release is confirmed.</div>
+          <p class="small">The first release focuses on application preparation and tracking. Job discovery remains a manual choice, so this plan does not depend on scraping or a job-board feed.</p>
+        </section>
+
+        <section id="architecture">
+          <p class="section-label">02 / System design</p>
+          <h2>One pipeline, three connected modules</h2>
+          <div class="flow" aria-label="System flow"><b>Choose job</b><i>→</i><b>Paste job description</b><i>→</i><b>Prepare answer pack</b><i>→</i><b>Review / apply</b><i>→</i><b>Update Sheet</b><i>→</i><b>Follow up</b></div>
+          <div class="callout"><strong>Integration goal</strong>Each role has one Application ID. The assistant uses that ID to prepare a resume recommendation and answer pack; the Chrome helper uses the approved pack to fill supported company forms; the Sheet records the actual submission and next action. These are modules of one workflow, not three independent products.</div>
+          <div class="table-wrap"><table><thead><tr><th>Layer</th><th>Owns</th><th>Implementation</th></tr></thead><tbody>
+            <tr><td>Google Sheet</td><td>Application records, next actions, verified profile facts, answer templates, resume catalogue</td><td>Tabs, validation, formulas, conditional formatting, and a small bound Apps Script menu/sidebar</td></tr>
+            <tr><td>Codex workflow</td><td>Job-description analysis, resume selection, answer drafts, evidence and missing-information flags</td><td>A reusable instruction template plus a structured candidate profile derived from the four resumes</td></tr>
+            <tr><td>Chrome helper</td><td>User-invoked field detection, preview, and filling on approved company application pages</td><td>Manifest V3 extension with temporary <code>activeTab</code> access and minimal permissions</td></tr>
+          </tbody></table></div>
+          <p><strong>First usable version:</strong> the Sheet, Codex workflow, and Chrome helper share the Application ID and exported profile/answer-pack files. You review and move approved answers between them. This avoids a hosted server or AI API key while we validate real applications. <strong>Integrated version:</strong> the Chrome side panel reads and writes the Sheet with authorized access and calls an AI service through a protected backend, eliminating the manual transfer. Codex can build that integration after the first version proves the data model and form mappings.</p>
+          <h3>Recommended technology stack</h3>
+          <div class="table-wrap"><table><thead><tr><th>Component</th><th>Technology</th><th>Why it fits</th></tr></thead><tbody>
+            <tr><td>Application data</td><td>Google Sheets</td><td>One editable record for applications, profile facts, answer packs, and review views.</td></tr>
+            <tr><td>Sheet controls</td><td>Google Apps Script (JavaScript)</td><td>Menus, validation, add/update forms, due-action view, and profile export inside the Sheet.</td></tr>
+            <tr><td>Browser interface</td><td>Chrome Manifest V3 extension; React + TypeScript side panel</td><td>One place to review answers, inspect form fields, and invoke filling on supported company portals.</td></tr>
+            <tr><td>First-release AI</td><td>Codex workflow with a versioned prompt and approved candidate profile</td><td>Lets us validate answer quality before adding a hosted AI service.</td></tr>
+            <tr><td>Integrated AI</td><td>Small Node.js + TypeScript API using the OpenAI Responses API</td><td>Generates answer packs from verified facts while keeping the API key on the server.</td></tr>
+            <tr><td>Integrated Sheet sync</td><td>Google OAuth 2.0 + Sheets API</td><td>Allows the Chrome interface to read and update the authorized Sheet directly.</td></tr>
+            <tr><td>Verification</td><td>Unit tests for mappings and data rules; browser tests on local sample forms</td><td>Checks answer grounding, duplicate handling, no-overwrite, and no-submit behavior.</td></tr>
+          </tbody></table></div>
+          <h3>Shared data contracts</h3>
+          <p>The Sheet assigns one stable <code>applicationId</code> per role. The approved profile export contains versioned <code>facts[]</code>, <code>resumeVersions[]</code>, and <code>standardAnswers[]</code>. Each job-specific answer pack contains <code>applicationId</code>, <code>resumeVersionId</code>, <code>answers[]</code>, and the IDs of the facts used to draft each answer. Version numbers let the assistant and extension warn when their imported copy is older than the Sheet.</p>
+          <div class="callout warning"><strong>Data boundary</strong>Resume facts and saved answers should contain only information you have verified. The extension should never store site passwords, session cookies, government IDs, or payment details. Sensitive self-identification questions stay for your own review.</div>
+        </section>
+
+        <section id="tracker">
+          <p class="section-label">03 / Deliverable one</p>
+          <h2>Google Sheets application tracker</h2>
+          <p class="intro">The tracker should be usable before the assistant or extension exists. Enter a role in under a minute, then use a daily view to see what needs attention.</p>
+          <h3>Workbook structure</h3>
+          <div class="table-wrap"><table><thead><tr><th>Tab</th><th>Purpose</th><th>Key behavior</th></tr></thead><tbody>
+            <tr><td><strong>Applications</strong></td><td>Canonical row per company and role</td><td>Dropdown status and role family; filters; protected ID/formula columns; clickable job link</td></tr>
+            <tr><td><strong>Today</strong></td><td>Action queue</td><td>Shows due or overdue follow-ups, active interviews, and applications still being prepared</td></tr>
+            <tr><td><strong>Profile &amp; Answers</strong></td><td>Reusable verified facts and answer templates</td><td>Each fact has source, verification state, and last-reviewed date</td></tr>
+            <tr><td><strong>Dashboard</strong></td><td>Weekly review</td><td>Counts by stage, applications by week, interviews, and overdue actions</td></tr>
+          </tbody></table></div>
+          <h3>Applications data model</h3>
+          <div class="table-wrap"><table><thead><tr><th>Field group</th><th>Columns</th><th>Rules</th></tr></thead><tbody>
+            <tr><td>Identity</td><td>Application ID, company, title, role family, source, job URL, location</td><td>Generate an ID; warn on a duplicate URL or the same company + title</td></tr>
+            <tr><td>Progress</td><td>Date saved, date applied, status, last updated, next action, due date</td><td>Use fixed statuses and real dates; a due date belongs to an action, not to a status</td></tr>
+            <tr><td>Application record</td><td>Resume version, answer-pack link or ID, recruiter/contact, notes</td><td>Record which PDF and answers were actually submitted</td></tr>
+            <tr><td>Outcome</td><td>Response date, interview date, outcome/reason</td><td>Keep rejection and withdrawal distinct; do not overwrite prior applications</td></tr>
+          </tbody></table></div>
+          <p><strong>Status set:</strong> Saved → Preparing → Applied → Assessment → Interview → Offer, with Rejected and Withdrawn as terminal states. “Follow-up due” is a calculated view, not a separate status.</p>
+          <h3>Interaction and automation</h3>
+          <ul>
+            <li>A bound Apps Script menu opens a compact <strong>Add application</strong> form and an <strong>Update status</strong> form. Google documents menus, dialogs, and sidebars as supported Sheet extensions.</li>
+            <li>Apps Script functions handle <code>addApplication</code>, <code>updateApplication</code>, <code>getDueActions</code>, and <code>exportApprovedProfile</code>. The sidebar validates required fields before writing a row.</li>
+            <li>Conditional formatting highlights overdue actions and upcoming interviews. Data validation prevents accidental status spelling variants.</li>
+            <li>New applications can start with a suggested follow-up date; the date remains editable because different recruiters and stages need different timing.</li>
+            <li>Email-based status suggestions are a later enhancement. They require a separate decision about inbox access and should never silently mark a rejection or interview.</li>
+          </ul>
+          <p class="small">Success condition: a new application is recorded in less than one minute, and the Today tab reliably shows the next action for every active application.</p>
+        </section>
+
+        <section id="assistant">
+          <p class="section-label">04 / Deliverable two</p>
+          <h2>Resume-grounded application assistant</h2>
+          <p class="intro">The assistant turns your existing resumes into a verified fact bank, then drafts an answer pack for a job description you paste. It should make a suggestion and show the evidence behind it; your review decides what is sent.</p>
+          <h3>Candidate profile and resume catalogue</h3>
+          <div class="table-wrap"><table><thead><tr><th>Role family</th><th>Starting variant</th><th>Evidence to lead with</th></tr></thead><tbody>
+            <tr><td>General SDE / backend</td><td>SDE; Python variant where FastAPI is central</td><td>Enterprise privacy module, backend services, access controls, Java/Spring Boot or FastAPI, DSA</td></tr>
+            <tr><td>MERN / full stack</td><td>MERN</td><td>React + Node/Express + MongoDB, Jira plugin, PayPocket, end-to-end product delivery</td></tr>
+            <tr><td>Frontend</td><td>MERN initially; create a dedicated frontend variant</td><td>React UI, task/calendar workflows, responsive interfaces, AI chat frontend</td></tr>
+            <tr><td>Applied AI Engineer</td><td>SDE or startup variant initially; create a dedicated applied-AI variant</td><td>TechMateAI, RAG, LangChain, ChromaDB, PingAI and streaming AI chat</td></tr>
+            <tr><td>Startup full stack</td><td>Startup variant</td><td>Ownership, fast MVP delivery, cross-stack implementation, customer-facing product work</td></tr>
+          </tbody></table></div>
+          <p>The common DSA proof point is 1100+ LeetCode problems, a 1712 maximum rating, and contest rank 1855, as stated in the provided resumes. The profile must record these as resume claims to verify, not as automatically refreshed statistics.</p>
+          <h3>Fact record format</h3>
+          <p>Each reusable claim should store <code>fact ID</code>, <code>claim</code>, <code>source resume / experience</code>, <code>verified?</code>, <code>approved wording</code>, and <code>last reviewed</code>. Contact details, work authorization, salary expectations, and availability are separate fields. The UPAAV date stays “Present” until the actual end date; future applications can state the planned 12 November availability.</p>
+          <h3>Per-job input and output</h3>
+          <div class="grid">
+            <div class="card"><h4>Input you provide</h4><p>Job title, company, portal, URL, pasted job description, location, and any application questions. Pasting avoids a dependency on reading job-board pages.</p></div>
+            <div class="card"><h4>Output you review</h4><p>Recommended resume, 3–5 matching proof points, a concise role pitch, draft answers within requested character limits, and a list of unknown or unsupported items.</p></div>
+          </div>
+          <h3>Generation rules</h3>
+          <ol>
+            <li>Choose the resume by role evidence, not by title alone; ask for a new tailored version when the existing four are weak fits.</li>
+            <li>Use only verified profile facts. Keep the source fact beside each proposed answer during review.</li>
+            <li>Preserve exact company names, employment dates, technologies, and metrics. Never invent years of experience or production ownership.</li>
+            <li>Mark custom questions that need your judgment: salary, relocation, sponsorship, start date exceptions, demographic information, or personal motivation.</li>
+            <li>Save the approved answer pack under the Application ID so the tracker records what you sent.</li>
+          </ol>
+          <p><strong>Files to implement:</strong> a human-readable candidate profile, a reusable Codex instruction template, and a structured answer-pack template. The first build should also create two focused resume variants for frontend and applied-AI roles after the underlying claims are verified.</p>
+          <p class="small">Success condition: an answer pack is useful without factual corrections in a pilot set of five real job descriptions, with any unknown clearly marked.</p>
+        </section>
+
+        <section id="formfill">
+          <p class="section-label">05 / Deliverable three</p>
+          <h2>User-invoked Chrome form helper</h2>
+          <p class="intro">The helper targets repetitive form entry on company career portals. It should be small and predictable: identify supported fields, propose values, show a preview, fill after a click, and stop before submission.</p>
+          <div class="flow" aria-label="Form helper flow"><b>Open company form</b><i>→</i><b>Click extension</b><i>→</i><b>Preview matches</b><i>→</i><b>Fill selected fields</b><i>→</i><b>Inspect form</b><i>→</i><b>You submit</b></div>
+          <h3>Release-one fields</h3>
+          <div class="table-wrap"><table><thead><tr><th>Fill automatically after review</th><th>Prompt for manual action</th></tr></thead><tbody>
+            <tr><td>Name, email, phone, location, LinkedIn/GitHub/portfolio links, education, planned availability</td><td>Resume file upload, CAPTCHA, login, employer-specific legal declarations</td></tr>
+            <tr><td>Selected approved answers from the current job's answer pack</td><td>Salary, sponsorship, demographic or disability questions, and any answer lacking a verified fact</td></tr>
+          </tbody></table></div>
+          <h3>Technical design</h3>
+          <ul>
+            <li>Use a Manifest V3 extension with <code>activeTab</code>, <code>scripting</code>, and local storage. Access begins only when you click the helper on the current tab. Avoid blanket access to every site.</li>
+            <li>Keep a domain allowlist for tested company portals. Disable page interaction on LinkedIn and Wellfound; use the answer pack for manual review and paste there.</li>
+            <li>Use field labels, names, and nearby text to map inputs; never infer from position alone. Show a field-by-field preview with confidence and an “unmatched” list.</li>
+            <li>Do not overwrite a non-empty field without an explicit choice. Never click Apply, Submit, Send, or any equivalent final action.</li>
+            <li>Import a small approved profile export from the Sheet for the first release. A later release can use Google OAuth and the Sheets API for direct synchronization if manual import proves burdensome.</li>
+            <li>Support one or two recurring company portal form patterns first; expand only after real examples and site-specific review.</li>
+          </ul>
+          <p><strong>Extension modules:</strong> <code>manifest.json</code> for permissions, a popup or side panel for preview, a field mapper for common inputs, a content script for filling selected values, local profile storage, and a domain policy that blocks unsupported sites. Test the mapper against a local sample form before trying a live portal.</p>
+          <div class="callout warning"><strong>Platform boundary</strong>LinkedIn states that third-party extensions that scrape, modify, or automate activity on its site are prohibited. Wellfound restricts automated collection and high-load automated access. For these platforms, use native features plus prepared answers outside the page. Review each company portal's terms before enabling the helper there.</div>
+          <p class="small">Success condition: on a supported test form, the helper fills common fields accurately, flags uncertain fields, leaves existing entries intact, and cannot submit the application.</p>
+        </section>
+
+        <section id="workflow">
+          <p class="section-label">06 / Everyday use</p>
+          <h2>The application loop</h2>
+          <ol>
+            <li><strong>Find and choose:</strong> browse LinkedIn, Wellfound, or a company careers page yourself. Save the URL and paste the description into the assistant.</li>
+            <li><strong>Prepare:</strong> review the recommended resume and answer pack. Resolve unknowns and select the PDF you will upload.</li>
+            <li><strong>Apply:</strong> use native browser or platform autofill where available. On supported company portals, invoke the Chrome helper for common fields and inspect the completed form before submitting.</li>
+            <li><strong>Record:</strong> add or update the row in Google Sheets with the actual submission date, resume version, status, and next action.</li>
+            <li><strong>Review daily:</strong> open Today for follow-ups, assessments, and interviews. Review Dashboard once a week to see which role families produce replies.</li>
+          </ol>
+          <p>For a role that redirects from LinkedIn or Wellfound to a company portal, record the original source in the Sheet and use the company portal's final application URL as the job link. One Application ID follows the role through every stage.</p>
+        </section>
+
+        <section id="delivery">
+          <p class="section-label">07 / Build order</p>
+          <h2>Deliver useful pieces in sequence</h2>
+          <div class="timeline">
+            <div class="phase"><div class="when">Phase 0<br>Profile audit</div><div><h3>Verify the fact bank</h3><p>Confirm employment dates, metrics, project claims, links, contact details, and planned availability. Identify the missing frontend and applied-AI resume variants. Output: approved candidate profile and resume catalogue.</p></div></div>
+            <div class="phase"><div class="when">Phase 1<br>Tracker MVP</div><div><h3>Make the Sheet usable immediately</h3><p>Create the four tabs, dropdowns, duplicate warnings, Today view, dashboard, and add/update menu. Enter a few existing applications to validate the workflow. Start logging live applications at this point.</p></div></div>
+            <div class="phase"><div class="when">Phase 2<br>Assistant MVP</div><div><h3>Prepare role-specific answers</h3><p>Write and test a repeatable Codex instruction template, fact matching, answer bank, resume recommendation, and answer-pack format using five real job descriptions.</p></div></div>
+            <div class="phase"><div class="when">Phase 3<br>Chrome helper</div><div><h3>Fill recurring company forms</h3><p>Implement a click-to-run extension on a local test form, then pilot one or two approved company portal patterns. Add preview, no-overwrite, no-submit, and domain-blocking checks.</p></div></div>
+            <div class="phase"><div class="when">Phase 4<br>Refine</div><div><h3>Improve from real use</h3><p>After about ten applications, inspect time spent, recurring questions, form mismatches, and missed follow-ups. Add only the automations that address measured friction.</p></div></div>
+          </div>
+        </section>
+
+        <section id="acceptance">
+          <p class="section-label">08 / Acceptance checks</p>
+          <h2>What “ready to use” means</h2>
+          <ul class="checklist">
+            <li>Five sample applications can be entered, updated, filtered, and found again; duplicate detection catches a repeat URL.</li>
+            <li>Today shows an overdue follow-up, a due-today action, and an upcoming interview correctly.</li>
+            <li>The assistant recommends sensible resume variants for SDE, MERN, frontend, backend, and applied-AI sample roles.</li>
+            <li>Every drafted experience claim maps to an approved profile fact; unanswered questions remain visibly unanswered.</li>
+            <li>The Chrome helper fills known fields on a test form, does not overwrite existing values, and leaves uncertain fields for review.</li>
+            <li>The Chrome helper is inactive on LinkedIn and Wellfound and has no action that submits an application.</li>
+            <li>A completed application records the date, submitted resume, final status, and next action in the Sheet.</li>
+          </ul>
+        </section>
+
+        <section id="decisions">
+          <p class="section-label">09 / Decisions and risks</p>
+          <h2>Resolve these during implementation</h2>
+          <div class="table-wrap"><table><thead><tr><th>Decision or risk</th><th>Current plan</th><th>Trigger to revisit</th></tr></thead><tbody>
+            <tr><td>Google account connection</td><td>Build inside your own Google Sheet using Apps Script; do not require a published add-on.</td><td>If the extension needs direct sheet synchronization, configure OAuth with the minimum Sheets permission.</td></tr>
+            <tr><td>AI operating cost</td><td>Use the existing Codex conversation and a reusable prompt for the initial assistant.</td><td>Consider an API-backed side panel only after the manual handoff becomes a real bottleneck.</td></tr>
+            <tr><td>Resume truth</td><td>Verify dates, metrics, technical claims, and links before adding them to the reusable profile.</td><td>Any source conflict or new experience requires a profile review.</td></tr>
+            <tr><td>Portal variation</td><td>Support a small number of tested company form patterns with preview and manual fallback.</td><td>Expand when repeated portals justify a specific adapter.</td></tr>
+            <tr><td>Application confirmation</td><td>You confirm submission and update the Sheet; a prefilled tracker action can make this quick.</td><td>Consider email-assisted status suggestions after choosing an inbox provider and access scope.</td></tr>
+            <tr><td>Personal data</td><td>Keep the Sheet private, use narrow extension permissions, and store no passwords or government IDs.</td><td>Review permissions whenever adding direct sync or an external AI endpoint.</td></tr>
+          </tbody></table></div>
+          <p class="small">The separate outreach-email project already in the workspace has a different purpose. Integration can be considered later if contact outreach becomes part of this application workflow.</p>
+        </section>
+
+        <section id="sources">
+          <p class="section-label">10 / References</p>
+          <h2>Source material and platform documentation</h2>
+          <ul>
+            <li>Provided resumes: <code>Harcharan_Resume_SDE_Sept_16__2026_.pdf</code>, <code>Harcharan_Resume_MERN__Sept_16__2026_.pdf</code>, <code>Harcharan_Resume_PD__Sept_16__2026_.pdf</code>, and <code>Harcharan_Resume_UPAAV___Startup_.pdf</code>. Their statements become reusable only after the profile audit.</li>
+            <li><a href="https://developers.google.com/apps-script/guides/sheets">Google Apps Script: Extend Google Sheets</a> — Sheet read/write, menus, dialogs, and sidebars.</li>
+            <li><a href="https://developer.chrome.com/docs/extensions/develop/concepts/activeTab">Chrome Extensions: activeTab permission</a> — temporary access after a user action.</li>
+            <li><a href="https://developer.chrome.com/docs/extensions/reference/api/sidePanel">Chrome Extensions: Side Panel API</a> — browser side panel interface.</li>
+            <li><a href="https://developers.openai.com/api/docs/guides/text">OpenAI API: Text generation</a> — Responses API for the later integrated assistant.</li>
+            <li><a href="https://developers.openai.com/api/reference/overview">OpenAI API overview</a> — keep API keys on the server.</li>
+            <li><a href="https://developers.google.com/workspace/sheets/api/scopes">Google Sheets API scopes</a> — OAuth authorization for later direct sync.</li>
+            <li><a href="https://www.linkedin.com/help/linkedin/answer/a1341387/prohibition-of-scraping-software">LinkedIn: Prohibited software and extensions</a> — automation boundary.</li>
+            <li><a href="https://wellfound.com/terms">Wellfound Talent General Terms</a> — automated access and content-use restrictions.</li>
+          </ul>
+          <p class="small">References checked for this plan on 12 October 2026. Recheck each target portal's current rules before implementing an on-page adapter.</p>
+        </section>
+      </main>
+    </div>
+    <footer class="foot">Job Search System · planning document · 12 October 2026</footer>
+  </div>
+</body>
+</html>
