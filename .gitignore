@@ -4,3 +4,8 @@ private/
 .DS_Store
 *.log
 
+app/dist/
+.env
+.env.*
+!.env.example
+coverage/

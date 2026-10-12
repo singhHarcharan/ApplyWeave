@@ -16,9 +16,9 @@ if (!window.__applyWeaveListener) {
       try {
         scannedFields = new Map();
         scannedUrl = location.href;
-        const matches = scanDocument(document, message.profile as ProfileExport, message.pack as AnswerPack | undefined,
+        const result = scanDocument(document, message.profile as ProfileExport, message.pack as AnswerPack | undefined,
           (match, element) => scannedFields.set(match.id, {element, value: match.proposedValue, label: match.label}));
-        sendResponse({ok: true, matches});
+        sendResponse({ok: true, ...result});
       }
       catch (error) { sendResponse({ok: false, error: String(error)}); }
     }

@@ -113,6 +113,19 @@
       </nav>
 
       <main>
+        <section id="implementation-status">
+          <div class="eyebrow" style="color:var(--teal)">Implementation update · 13 October 2026</div>
+          <h2>The workspace is built</h2>
+          <p>ApplyWeave now includes a local React web app at <a href="http://127.0.0.1:4318">127.0.0.1:4318</a>, a TypeScript/Express backend, direct Google Sheets sync, signed-in Codex answer generation, and a persistent Chrome side panel. Start it with <code>Start ApplyWeave.command</code>. See <a href="../README.md">README</a> for setup and daily use.</p>
+          <ul>
+            <li><strong>Tracker:</strong> four live private Sheet tabs; local dashboard, queue, searchable applications, edits, backups, conflict review, and optional Apps Script installer.</li>
+            <li><strong>Assistant:</strong> approved profile, six resume versions including frontend and applied AI, job-fit assessment, referenced facts, editable answers, character limits, and explicit approvals.</li>
+            <li><strong>Form helper:</strong> import one application bundle, allow an exact portal hostname, scan/preview/fill selected empty text fields, and show unsupported fields for manual entry.</li>
+          </ul>
+          <div class="callout"><strong>Activation still required</strong>Import a Desktop Google OAuth client JSON in Settings and complete consent to enable app-to-Sheet sync. Load <code>extension/dist</code> manually in Chrome. Then pilot a real company form and actual job descriptions. These account/browser steps have not been represented as completed. The optional Sheet sidebar needs separate authorization.</div>
+          <p>The app runs locally and stores personal data in the ignored <code>private/</code> folder. Unsynced work is labelled pending. The approved profile can be pulled from the Sheet; local profile changes use an explicit export/import workflow. Answer text remains local while its ID is tracked in Sheets. The original design and acceptance criteria below remain the reference for real-use validation.</p>
+        </section>
+
         <section id="summary">
           <p class="section-label">01 / Outcome and scope</p>
           <h2>What this system should accomplish</h2>

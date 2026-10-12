@@ -3,6 +3,8 @@
   "name": "ApplyWeave Form Helper",
   "description": "Review and fill approved answers on supported company application forms.",
   "version": "0.1.0",
-  "permissions": ["activeTab", "scripting", "storage"],
-  "action": {"default_title": "ApplyWeave", "default_popup": "popup.html"}
+  "permissions": ["activeTab", "scripting", "storage", "sidePanel"],
+  "background": {"service_worker": "background.js"},
+  "side_panel": {"default_path": "panel.html"},
+  "action": {"default_title": "Open ApplyWeave"}
 }

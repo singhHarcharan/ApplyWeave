@@ -1,0 +1,15 @@
+{
+  "name": "applyweave", "version": "1.0.0", "private": true, "type": "module",
+  "engines": {"node": ">=20.18"},
+  "scripts": {
+    "start": "tsx app/server/index.ts",
+    "dev": "node scripts/dev.mjs",
+    "build": "vite build --config app/vite.config.ts",
+    "typecheck": "tsc --noEmit -p app/tsconfig.json",
+    "test": "tsx --test app/server/*.test.ts",
+    "test:all": "npm test && node --test apps-script/test.mjs assistant/validate-pack.test.mjs && npm --prefix extension test",
+    "check": "npm run typecheck && npm run test:all && npm run build && npm --prefix extension run typecheck && npm --prefix extension run build"
+  },
+  "dependencies": {"express":"^4.21.2","zod":"^3.25.76","react":"^19.2.0","react-dom":"^19.2.0","lucide-react":"^0.468.0"},
+  "devDependencies": {"@types/express":"^4.17.21","@types/node":"^20.19.0","@types/react":"^19.2.0","@types/react-dom":"^19.2.0","@vitejs/plugin-react":"^4.4.1","vite":"^6.3.5","tsx":"^4.20.0","typescript":"^5.8.0"}
+}
