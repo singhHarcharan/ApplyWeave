@@ -16,6 +16,12 @@ Open **http://127.0.0.1:4318** in Chrome. Keep the terminal running. Node.js 20.
 
 The app is local to your computer. Personal information, application records, answer packs, credentials, and resumes are stored under the Git-ignored `private/` directory. A fresh clone starts with an empty profile; import an approved profile in **Profile & resumes**, or restore a private backup in **Settings**. Keep private backups somewhere safe outside the repository.
 
+## Sign in with Google
+
+The app now requires Google sign-in before loading your profile, applications, answer packs, or resumes. Click **Sign in with Google** on the welcome screen and use the workspace owner's account. Google identity is verified on the server; another Google account cannot open this private workspace. The existing profile email identifies the owner, then the Google account ID is pinned locally.
+
+An HttpOnly, SameSite session cookie keeps the browser signed in for up to seven days. Restarting the server ends sessions. **Sign out** locks the app and clears private data from the current UI; it preserves your Google Sheets grant for your next sign-in. **Disconnect Google** in Settings removes the stored Sheets token. The app remains a local, single-owner workspace; these controls do not turn it into a hosted multi-user service.
+
 ## The complete workflow
 
 | Part | What is implemented |
@@ -46,10 +52,20 @@ The app uses [Google's installed-application OAuth flow](https://developers.goog
 1. In [Google Cloud Console](https://console.cloud.google.com/), create or select a project and enable **Google Sheets API**. Enable **Apps Script API** too if you want the optional Sheet sidebar installer.
 2. Configure the OAuth consent screen for your own use. If its audience is External and its publishing status is Testing, add your tracker owner email as a test user. Google may require reconnecting after a testing refresh token expires.
 3. Create an OAuth client with application type **Desktop app** and download its JSON. Do not choose Web application and do not commit the file.
-4. In ApplyWeave **Settings → Google Sheets**, import that JSON and enter the tracker spreadsheet ID. Save the configuration, click **Connect Google**, and select the Sheet's owner account. Complete Google's consent yourself.
+4. For a fresh installation, configure the client locally before signing in:
+
+   ```sh
+   npm run configure-google -- /path/to/desktop-client.json YOUR_SPREADSHEET_ID
+   ```
+
+   On this computer the client is already configured. Open ApplyWeave, click **Sign in with Google**, and select the Sheet's owner account. Complete Google's consent. Signed-in users can update configuration under **Settings → Google Sheets**.
 5. Return to ApplyWeave and click **Sync Google Sheets**. The header and individual records show the actual result. Resolve any conflicts before continuing.
 
 The scopes are `openid`, `email`, and `spreadsheets`; the last permits reading/writing spreadsheets accessible to your account. ApplyWeave's code targets only the configured spreadsheet. Tokens and the client file are stored locally with restricted file permissions. Disconnect removes the local token; revoke the app separately in your Google Account if desired.
+
+### Fixing a disabled Sheets API
+
+A successful Google login does not automatically enable Cloud APIs. If **Google Sheets API is disabled** appears, use the error's **Enable Sheets API** link, select the same Cloud project as the OAuth client, enable the API, wait briefly for activation, then retry Sync. There is no need to recreate the OAuth client. ApplyWeave preserves local changes and shows an actionable message instead of raw Google JSON.
 
 ### What sync does
 
@@ -96,7 +112,7 @@ npm run check
 
 This runs full app TypeScript checking, server/assistant/Sheets tests, extension tests, and both production builds. Tests cover persistence, CSRF and origin checks, duplicate handling, conflicts, plain-value Sheet writes, profile approvals, generation races, optional installation, field mapping, changed-page protection, no-overwrite/no-submit, and pack validation.
 
-See `docs/verification.md` for the current verification record. Google API tests use mocked transports. Live Google synchronization and the installed extension need a final pilot after their authorization/install steps. A signed-in Codex generation was tested live; browser workflow checks use an isolated local workspace so no test applications enter the actual tracker.
+See `docs/verification.md` for the current verification record. Google API tests use mocked transports. The Sheets API has been enabled and a live sync of the current tracker completed successfully. The installed extension still needs a real portal pilot. A signed-in Codex generation was tested live; browser workflow checks use an isolated local workspace so no test applications enter the actual tracker.
 
 | Folder | Purpose |
 | --- | --- |

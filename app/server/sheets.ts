@@ -18,6 +18,22 @@ export interface SheetsGateway {
   appendRow(values:Cell[]):Promise<void>;
   readProfile?():Promise<ProfileExport|null>;
 }
+export function sheetsRequestError(status:number,raw:string,clientId:string):AppError {
+  let error:any;
+  try { error=JSON.parse(raw)?.error; } catch { error=null; }
+  const disabled=error?.details?.some?.((detail:any)=>detail?.reason==='SERVICE_DISABLED') || /(?:has not been used in project|API.*(?:is disabled|is not enabled))/i.test(error?.message || '');
+  if (status===403 && disabled) {
+    const project=clientId.match(/^(\d+)-/)?.[1];
+    const setupUrl='https://console.cloud.google.com/apis/library/sheets.googleapis.com'+(project?'?project='+project:'');
+    return new AppError('Google Sheets API is disabled for your Google Cloud project. Enable it, allow a few minutes for activation, then retry Sync. Your Google sign-in is still valid.',503,'SHEETS_API_DISABLED',{setupUrl});
+  }
+  if(status===403)return new AppError('Google could not access this tracker. Check that the connected account can edit the Sheet and that Sheets permission was granted.',403,'SHEET_ACCESS');
+  if(status===404)return new AppError('The tracker was not found. Check the spreadsheet ID and the connected account’s access.',404,'SHEET_NOT_FOUND');
+  if(status===401)return new AppError('Your Google connection needs renewal. Reconnect Google from Settings and try again.',502,'GOOGLE_AUTH');
+  if(status===429)return new AppError('Google Sheets is temporarily rate limiting requests. Your changes are saved locally; retry shortly.',429,'SHEETS_RATE_LIMIT');
+  return new AppError('Google Sheets is temporarily unavailable. Your changes remain local; try syncing again shortly.',502,'GOOGLE_SHEETS');
+}
+
 type Fetcher = typeof fetch;
 export class GoogleSheetsClient implements SheetsGateway {
   constructor(private oauth:GoogleOAuth, private fetcher:Fetcher = fetch) {}
@@ -27,10 +43,9 @@ export class GoogleSheetsClient implements SheetsGateway {
     const encodedRange = encodeURIComponent(append ? range.slice(0,-7) : range);
     const url = new URL(`https://sheets.googleapis.com/v4/spreadsheets/${config.spreadsheetId}/values/${encodedRange}${append ? ':append' : ''}`);
     for (const [key,value] of Object.entries(query)) url.searchParams.set(key,value);
-    const response = await this.fetcher(url,{method,headers:{Authorization:`Bearer ${await this.oauth.accessToken()}`,...(body ? {'content-type':'application/json'} : {})},...(body ? {body:JSON.stringify(body)} : {})});
+    const response = await this.fetcher(url,{signal:AbortSignal.timeout(30000),method,headers:{Authorization:`Bearer ${await this.oauth.accessToken()}`,...(body ? {'content-type':'application/json'} : {})},...(body ? {body:JSON.stringify(body)} : {})});
     if (!response.ok) {
-      const raw = await response.text();
-      throw new AppError(`Google Sheets request failed (${response.status}): ${raw.slice(0,300)}`,502,'GOOGLE_SHEETS');
+      throw sheetsRequestError(response.status, await response.text(), config.clientId);
     }
     return response.json() as Promise<Record<string,unknown>>;
   }

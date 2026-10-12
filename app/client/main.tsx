@@ -23,7 +23,7 @@ import {
   AlertCircle,
   Link2,
   Copy,
-  PanelLeftClose,
+  LogOut,
   ShieldCheck,
 } from "lucide-react";
 import "./style.css";
@@ -104,6 +104,166 @@ type State = {
   conflicts: { applicationId: string; message: string }[];
   csrfToken: string;
 };
+type AuthSession = {
+  authenticated: boolean;
+  user: { email: string } | null;
+  configured: boolean;
+  csrfToken: string;
+};
+class ApiError extends Error {
+  constructor(
+    message: string,
+    public code?: string,
+    public setupUrl?: string,
+  ) {
+    super(message);
+  }
+}
+function GoogleMark() {
+  return (
+    <svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="#4285F4"
+        d="M21.6 12.2c0-.7-.1-1.4-.2-2.1H12v4h5.4a4.6 4.6 0 0 1-2 3v2.5h3.3c1.9-1.8 2.9-4.3 2.9-7.4Z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 22c2.7 0 5-.9 6.7-2.4l-3.3-2.5c-.9.6-2 1-3.4 1-2.6 0-4.8-1.8-5.6-4.1H3v2.6A10 10 0 0 0 12 22Z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M6.4 14a6 6 0 0 1 0-4V7.4H3a10 10 0 0 0 0 9.2L6.4 14Z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 5.9c1.5 0 2.8.5 3.8 1.5l2.9-2.9A9.6 9.6 0 0 0 12 2a10 10 0 0 0-9 5.4L6.4 10c.8-2.3 3-4.1 5.6-4.1Z"
+      />
+    </svg>
+  );
+}
+function Login({
+  configured,
+  error,
+  busy,
+  signIn,
+  retry,
+}: {
+  configured: boolean;
+  error: string;
+  busy: boolean;
+  signIn: () => void;
+  retry: () => void;
+}) {
+  return (
+    <main className="login-page">
+      <div className="login-story">
+        <a className="brand" href="/">
+          <span className="brand-mark">w</span>ApplyWeave
+        </a>
+        <div className="login-story-content">
+          <div className="eyebrow">YOUR NEXT CHAPTER STARTS HERE</div>
+          <h1>
+            Bring your next <br />
+            opportunity <br />
+            <em>into focus.</em>
+          </h1>
+          <p>
+            A thoughtful workspace for your job search.
+            <br />
+            From the first saved role to the next offer.
+          </p>
+          <div className="login-benefits">
+            <span>
+              <BriefcaseBusiness size={18} />
+              Every application, connected.
+            </span>
+            <span>
+              <Sparkles size={18} />
+              Answers grounded in your experience.
+            </span>
+            <span>
+              <CalendarDays size={18} />A clear next step, every day.
+            </span>
+          </div>
+        </div>
+        <div className="login-story-footer">
+          Built for the work of finding your next role.
+        </div>
+        <div className="login-weave" aria-hidden="true">
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
+        </div>
+      </div>
+      <div className="login-entry">
+        <div className="login-card">
+          <span className="login-welcome-icon">
+            <ArrowUpRight size={24} />
+          </span>
+          <div className="eyebrow">YOUR PERSONAL WORKSPACE</div>
+          <h2>Welcome to ApplyWeave.</h2>
+          <p className="login-description">
+            Sign in with the Google account connected to your tracker to open
+            your applications, profile, and answers.
+          </p>
+          {error && (
+            <div className="alert error" role="alert">
+              <AlertCircle size={18} />
+              <span>{error}</span>
+            </div>
+          )}
+          <button
+            className="google-signin"
+            disabled={!configured || busy}
+            onClick={signIn}
+          >
+            {busy ? (
+              <LoaderCircle className="spin" size={19} />
+            ) : (
+              <GoogleMark />
+            )}
+            {busy ? "Opening Google…" : "Sign in with Google"}
+            <ArrowRight size={17} />
+          </button>
+          <p className="login-browser-hint">
+            Use Chrome for Google sign-in. If Google blocks an embedded browser,
+            open <code>http://127.0.0.1:4318</code> in Chrome.
+          </p>
+          {!configured && (
+            <div className="login-setup">
+              <strong>Connect Google on this computer first</strong>
+              <p>
+                Download your Google Desktop OAuth client JSON, then run this
+                command from the ApplyWeave project folder:
+              </p>
+              <code>
+                npm run configure-google -- /path/client.json spreadsheet-id
+              </code>
+              <p>
+                Keep the client file private. Once configured, check again to
+                continue.
+              </p>
+              <button className="text-button" onClick={retry}>
+                <RefreshCw size={14} />
+                Check configuration
+              </button>
+            </div>
+          )}
+          <div className="login-privacy">
+            <ShieldCheck size={18} />
+            <p>
+              Your applications stay private. Signing out locks this workspace
+              and keeps your Google Sheets connection ready for next time.
+            </p>
+          </div>
+        </div>
+        <div className="login-footer">A little clarity. A little momentum.</div>
+      </div>
+    </main>
+  );
+}
 type View =
   | "Dashboard"
   | "Applications"
@@ -223,11 +383,74 @@ function App() {
     [drawer, setDrawer] = useState<Partial<Application> | null>(null),
     [selected, setSelected] = useState("");
   const token = useRef("");
+  const epoch = useRef(0);
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [authError, setAuthError] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [syncSetup, setSyncSetup] = useState("");
+  function clearPrivate() {
+    epoch.current += 1;
+    setState(null);
+    setDrawer(null);
+    setSelected("");
+    setView("Dashboard");
+    setError("");
+    setNotice("");
+    setSyncSetup("");
+    setBusy("");
+    setSession((current) =>
+      current ? { ...current, authenticated: false, user: null } : null,
+    );
+  }
+  async function loadSession() {
+    const r = await fetch("/api/auth/session", { cache: "no-store" });
+    if (!r.ok)
+      throw new Error(
+        "Could not check your sign-in. Make sure ApplyWeave is running and try again.",
+      );
+    const current: AuthSession = await r.json();
+    token.current = current.csrfToken;
+    setSession(current);
+    if (current.authenticated) await refresh();
+    else {
+      setState(null);
+    }
+  }
+  function requireSignIn() {
+    clearPrivate();
+    setAuthError(
+      "Your session has ended. Sign in with Google to reopen your workspace.",
+    );
+  }
+  async function signIn() {
+    setAuthBusy(true);
+    setAuthError("");
+    try {
+      const result = await request("/auth/google/start", {});
+      window.location.assign(result.url);
+    } catch (e) {
+      setAuthError((e as Error).message);
+      setAuthBusy(false);
+    }
+  }
+  async function signOut() {
+    setAuthBusy(true);
+    try {
+      await request("/auth/logout", {});
+      clearPrivate();
+      setAuthError("");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setAuthBusy(false);
+    }
+  }
   async function request(path: string, body?: any, method = "POST") {
+    const requestEpoch = epoch.current;
     const r = await fetch(
       "/api" + path,
       body === undefined
-        ? undefined
+        ? { cache: "no-store" }
         : {
             method,
             headers: {
@@ -240,8 +463,25 @@ function App() {
     const j = await r
       .json()
       .catch(() => ({ error: "The server returned an unreadable response." }));
-    if (!r.ok)
-      throw new Error(j.error || "The request could not be completed.");
+    if (r.status === 401) {
+      requireSignIn();
+      throw new ApiError("Sign in to continue.", "AUTH_REQUIRED");
+    }
+    if (!r.ok) {
+      if (
+        j.code === "SHEETS_API_DISABLED" &&
+        typeof j.setupUrl === "string" &&
+        j.setupUrl.startsWith("https://console.cloud.google.com/")
+      )
+        setSyncSetup(j.setupUrl);
+      throw new ApiError(
+        j.error || "The request could not be completed.",
+        j.code,
+        j.setupUrl,
+      );
+    }
+    if (requestEpoch !== epoch.current)
+      throw new ApiError("This session has ended.", "AUTH_REQUIRED");
     return j;
   }
   async function refresh() {
@@ -251,7 +491,30 @@ function App() {
     return s;
   }
   useEffect(() => {
-    refresh().catch((e) => setError(e.message));
+    const params = new URLSearchParams(window.location.search);
+    const failure = params.get("authError");
+    if (failure) {
+      const friendly: Record<string, string> = {
+        access_denied:
+          "Google sign-in was cancelled. You can try again when ready.",
+        wrong_account:
+          "Use the Google account connected to this ApplyWeave workspace.",
+        invalid_state: "This sign-in link expired. Start a new sign-in below.",
+        oauth_failed: "Google could not complete sign-in. Please try again.",
+      };
+      const message =
+        friendly[failure] ||
+        "Google sign-in did not complete. Please try again using the account connected to your tracker.";
+      setAuthError(message);
+      setError(message);
+      params.delete("authError");
+      window.history.replaceState(
+        {},
+        "",
+        window.location.pathname + (params.size ? "?" + params.toString() : ""),
+      );
+    }
+    loadSession().catch((e) => setAuthError(e.message));
   }, []);
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
@@ -259,6 +522,10 @@ function App() {
   async function run(name: string, fn: () => Promise<any>, message = "") {
     setBusy(name);
     setError("");
+    if (name === "sync") {
+      setSyncSetup("");
+      setNotice("");
+    }
     try {
       await fn();
       await refresh();
@@ -270,14 +537,20 @@ function App() {
     }
   }
   async function download(path: string, filename: string) {
+    const downloadEpoch = epoch.current;
     try {
       setError("");
-      const r = await fetch("/api" + path);
+      const r = await fetch("/api" + path, { cache: "no-store" });
+      if (r.status === 401) {
+        requireSignIn();
+        throw new ApiError("Sign in to download your files.", "AUTH_REQUIRED");
+      }
       if (!r.ok) {
         const j = await r.json();
         throw new Error(j.error || "Download failed.");
       }
       const blob = await r.blob();
+      if (downloadEpoch !== epoch.current) return;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -298,15 +571,54 @@ function App() {
       () => request("/sync", {}),
       "Sync finished. Check any conflicts below.",
     );
+  if (!session)
+    return (
+      <main className="boot">
+        <div className="brand">
+          <span className="brand-mark">w</span>ApplyWeave
+        </div>
+        {authError ? (
+          <>
+            <p role="alert">{authError}</p>
+            <button
+              onClick={() => {
+                setAuthError("");
+                loadSession().catch((e) => setAuthError(e.message));
+              }}
+            >
+              Try again
+            </button>
+          </>
+        ) : (
+          <>
+            <LoaderCircle className="spin" />
+            <p>Checking your sign-in…</p>
+          </>
+        )}
+      </main>
+    );
+  if (!session.authenticated)
+    return (
+      <Login
+        configured={session.configured}
+        error={authError}
+        busy={authBusy}
+        signIn={signIn}
+        retry={() => {
+          setAuthError("");
+          loadSession().catch((e) => setAuthError(e.message));
+        }}
+      />
+    );
   if (!state)
     return (
       <main className="boot">
         <div className="brand">
           <span className="brand-mark">w</span>ApplyWeave
         </div>
-        {error ? (
+        {error || authError ? (
           <>
-            <p role="alert">{error}</p>
+            <p role="alert">{error || authError}</p>
             <button onClick={() => refresh().catch((e) => setError(e.message))}>
               Try again
             </button>
@@ -386,6 +698,18 @@ function App() {
             Workspace <ChevronRight size={14} /> <b>{view}</b>
           </span>
           <div className="top-actions">
+            <span className="signed-in-email" title={session.user?.email}>
+              {session.user?.email}
+            </span>
+            <button
+              className="icon-button signout"
+              aria-label="Sign out of ApplyWeave"
+              title="Sign out"
+              disabled={authBusy}
+              onClick={signOut}
+            >
+              <LogOut size={16} />
+            </button>
             <span
               className={
                 "connection-dot " +
@@ -417,6 +741,37 @@ function App() {
               <button aria-label="Dismiss error" onClick={() => setError("")}>
                 <X size={16} />
               </button>
+            </div>
+          )}
+          {syncSetup && (
+            <div className="alert warning sync-setup">
+              <AlertCircle size={18} />
+              <div>
+                <strong>Enable Google Sheets access</strong>
+                <p>
+                  The Google Sheets API is disabled for this connection's Google
+                  Cloud project. Enable it, allow a moment for the change to
+                  apply, then retry. Your local changes are still pending.
+                </p>
+                <div className="button-row">
+                  <a
+                    className="button secondary"
+                    href={syncSetup}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Enable Sheets API <ArrowUpRight size={15} />
+                  </a>
+                  <button
+                    className="secondary"
+                    disabled={!!busy}
+                    onClick={sync}
+                  >
+                    <RefreshCw size={15} />
+                    Retry sync
+                  </button>
+                </div>
+              </div>
             </div>
           )}
           {notice && (

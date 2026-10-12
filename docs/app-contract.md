@@ -16,3 +16,12 @@ GET /api/extension/export/:applicationId -> {profile,pack} JSON bundle for impor
 
 ## Client views
 Dashboard / Applications / Prepare / Profile & Resumes / Settings. Live data, no fixture claims. Today action queue, searchable and filterable table, add/edit drawer, status lifecycle, per-role prepare workspace with JD/questions/generation and evidence/approval editor, downloads/copy, profile catalogue, settings OAuth import/connect/disconnect/sync plus backup. Responsive accessible warm-white/ink/teal visual style, useful empty states. Show local pending and connection statuses clearly.
+
+
+## Authentication update
+
+`GET /api/auth/session` is public and returns `{authenticated,user:{email}|null,configured,csrfToken}` without profile/application data. Call it before loading `/api/state`. `POST /api/auth/google/start` requires CSRF and binds state/PKCE to an HttpOnly browser cookie. The callback verifies the owner with Google, pins the account ID locally, sets a seven-day HttpOnly SameSite=Lax loopback session cookie, and redirects to `/`. Errors redirect to `/?authError=CODE` for the UI to explain.
+
+All other private API routes, including state, profile, resume downloads, packs, exports, configuration, and sync, return `401 AUTH_REQUIRED` without a session. `POST /api/auth/logout` invalidates the browser session while retaining the Google grant. Sessions are in memory and end on server restart. Fresh installations configure credentials through `npm run configure-google -- /path/client.json SPREADSHEET_ID` before using the login screen.
+
+A disabled Sheets API returns `503` with `{code:"SHEETS_API_DISABLED",error,setupUrl}`. The UI offers the official Cloud setup link and retry. A Sheets permission error is distinct from an app session expiration.

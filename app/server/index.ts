@@ -7,6 +7,7 @@ import type {Application, AnswerPack, ProfileExport} from '../shared/types.js';
 import {AppError, createApplication, patchApplication, validatePack, validatePreferences, validateProfile} from './model.js';
 import {WorkspaceStore, type Workspace} from './store.js';
 import {GoogleOAuth} from './google.js';
+import {Sessions, cookieValue, clearOAuthBinding, OAUTH_BIND_COOKIE} from './auth.js';
 import {AppsScriptInstaller} from './apps-script.js';
 import {GoogleSheetsClient, profileContentHash, resolveConflict, resolveProfileConflict, syncWorkspace, type SheetsGateway} from './sheets.js';
 import {aiAvailable, generatePack, type GenerationInput} from './generator.js';
@@ -17,7 +18,7 @@ const ORIGINS = new Set(['http://127.0.0.1:4318','http://127.0.0.1:5173']);
 type Job = {applicationId:string;status:'running'|'complete'|'failed';pack?:AnswerPack;error?:string};
 type Dependencies = {
   privateDir?:string; distDir?:string; allowedHost?:string; gateway?:SheetsGateway;
-  aiAvailable?:typeof aiAvailable; generatePack?:typeof generatePack;
+  aiAvailable?:typeof aiAvailable; generatePack?:typeof generatePack; oauthFetcher?:typeof fetch;
 };
 const wrap = (fn:(req:Request,res:Response)=>Promise<unknown>) => (req:Request,res:Response,next:NextFunction) => { Promise.resolve(fn(req,res)).catch(next); };
 const objectBody = (value:unknown):Record<string,unknown> => {
@@ -63,7 +64,8 @@ function checkBackup(value:unknown):Workspace {
 export async function createApp(deps:Dependencies = {}):Promise<{app:Express;store:WorkspaceStore;oauth:GoogleOAuth;csrfToken:string}> {
   const privateDir = deps.privateDir || path.join(ROOT,'private');
   const store = new WorkspaceStore(privateDir); await store.init();
-  const oauth = new GoogleOAuth(privateDir);
+  const oauth = new GoogleOAuth(privateDir,deps.oauthFetcher);
+  const sessions = new Sessions();
   const scriptInstaller = new AppsScriptInstaller(oauth);
   const gateway = deps.gateway || new GoogleSheetsClient(oauth);
   const csrfToken = randomBytes(32).toString('base64url');
@@ -85,6 +87,39 @@ export async function createApp(deps:Dependencies = {}):Promise<{app:Express;sto
   app.use('/api',express.json({limit:'12mb',type:'application/json'}));
   app.use('/api',(req,res,next) => {
     if (['POST','PATCH','PUT','DELETE'].includes(req.method) && req.get('x-applyweave-csrf') !== csrfToken) return res.status(403).json({error:'Refresh ApplyWeave and try again.',code:'CSRF'});
+    next();
+  });
+
+  app.get('/api/auth/session',wrap(async (req,res) => {
+    const user=sessions.user(req);
+    res.json({authenticated:!!user,user:user?{email:user.email}:null,configured:!!(await oauth.config()),csrfToken});
+  }));
+  app.post('/api/auth/google/start',wrap(async (req,res) => {
+    const browserBinding=randomBytes(32).toString('base64url');
+    const url=await oauth.start(req.body?.includeScript===true,browserBinding);
+    res.cookie(OAUTH_BIND_COOKIE,browserBinding,{httpOnly:true,sameSite:'lax',secure:false,path:'/api/auth/google/callback',maxAge:10*60*1000});
+    res.json({url});
+  }));
+  app.get('/api/auth/google/callback',async (req,res) => {
+    try {
+      if(req.query.error)throw new AppError('Google sign-in was cancelled.',400,'OAUTH_DENIED');
+      const user=await oauth.callback(req.query.code,req.query.state,cookieValue(req,OAUTH_BIND_COOKIE),store.read().profile.personal.email);
+      clearOAuthBinding(res);
+      sessions.destroy(req,res);
+      sessions.create(res,user);
+      res.redirect(303,'/?google=connected');
+    } catch(error) {
+      clearOAuthBinding(res);
+      const code=error instanceof AppError && /^[A-Z_]{3,40}$/.test(error.code)?error.code:'GOOGLE_AUTH';
+      res.redirect(303,`/?authError=${encodeURIComponent(code)}`);
+    }
+  });
+  app.post('/api/auth/logout',(req,res) => {
+    sessions.destroy(req,res);
+    res.json({authenticated:false});
+  });
+  app.use('/api',(req,res,next) => {
+    if (!sessions.user(req)) return res.status(401).json({error:'Sign in with the approved Google account to use ApplyWeave.',code:'AUTH_REQUIRED'});
     next();
   });
 
@@ -166,11 +201,6 @@ export async function createApp(deps:Dependencies = {}):Promise<{app:Express;sto
     const body = objectBody(req.body);
     await oauth.configure(body.client,body.spreadsheetId);
     res.json({configured:true});
-  }));
-  app.post('/api/auth/google/start',wrap(async (req,res) => res.json({url:await oauth.start(req.body?.includeScript === true)})));
-  app.get('/api/auth/google/callback',wrap(async (req,res) => {
-    await oauth.callback(req.query.code,req.query.state);
-    res.redirect(303,'/?google=connected');
   }));
   app.post('/api/auth/google/disconnect',wrap(async (_req,res) => { await oauth.disconnect(); res.json({disconnected:true}); }));
   app.post('/api/apps-script/install',wrap(async (_req,res) => res.json(await scriptInstaller.install())));
