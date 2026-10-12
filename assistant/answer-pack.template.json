@@ -7,6 +7,7 @@
     {
       "question": "Why are you a fit for this role?",
       "answer": "Replace with a fact-grounded answer.",
+      "maxCharacters": 500,
       "factIds": ["F001"],
       "approved": false
     }

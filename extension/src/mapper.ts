@@ -15,6 +15,15 @@ const patterns: Array<[string, RegExp]> = [
 ];
 
 function normalize(text: string): string { return text.replace(/\s+/g, ' ').replace(/[?*:]+$/g, '').trim(); }
+function isEligible(element: HTMLInputElement | HTMLTextAreaElement): boolean {
+  if (element.disabled || element.readOnly || element.hidden || element.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
+  const view = element.ownerDocument.defaultView;
+  for (let parent: Element | null = element; parent; parent = parent.parentElement) {
+    const style = view?.getComputedStyle(parent);
+    if (style?.display === 'none' || style?.visibility === 'hidden' || style?.visibility === 'collapse') return false;
+  }
+  return true;
+}
 function labelOf(element: HTMLInputElement | HTMLTextAreaElement): string {
   const labels = Array.from(element.labels || []).map(label => label.textContent || '').join(' ');
   const aria = element.getAttribute('aria-label') || '';
@@ -27,13 +36,13 @@ function valueFor(key: string, personal: Record<string, string>): string {
   if (key === 'lastName' && !personal.lastName) return (personal.fullName || '').split(/\s+/).slice(1).join(' ');
   return personal[key] || '';
 }
-export function scanDocument(doc: Document, profile: ProfileExport, pack?: AnswerPack): FieldMatch[] {
+export function scanDocument(doc: Document, profile: ProfileExport, pack?: AnswerPack, onMatch?: (match: FieldMatch, element: HTMLInputElement | HTMLTextAreaElement) => void): FieldMatch[] {
   const matches: FieldMatch[] = [];
   const elements = Array.from(doc.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea'));
   for (let i = 0; i < elements.length; i++) {
     const element = elements[i];
     const type = element instanceof doc.defaultView!.HTMLInputElement ? element.type.toLowerCase() : 'textarea';
-    if (!['text', 'email', 'tel', 'url', 'date', 'textarea'].includes(type) || element.disabled || element.readOnly || element.hidden) continue;
+    if (!['text', 'email', 'tel', 'url', 'date', 'textarea'].includes(type) || !isEligible(element)) continue;
     const label = labelOf(element);
     if (!label || excluded.test(label)) continue;
     let key = '';
@@ -52,18 +61,20 @@ export function scanDocument(doc: Document, profile: ProfileExport, pack?: Answe
     if (type === 'email' && !proposedValue.includes('@')) continue;
     if (label.toLowerCase() !== key.toLowerCase() && key.startsWith('answer:')) confidence = 'medium';
     const id = 'aw-' + i;
-    element.dataset.applyWeaveField = id;
-    matches.push({id, label, key, proposedValue, currentValue: element.value, confidence});
+    const match = {id, label, key, proposedValue, currentValue: element.value, confidence};
+    matches.push(match);
+    onMatch?.(match, element);
   }
   return matches;
 }
 
-export function fillDocument(doc: Document, selected: Array<{id: string; value: string}>, overwrite = false): {filled: number; skipped: string[]} {
+export function fillDocument(doc: Document, selected: Array<{id: string; value: string}>, expected: Map<string, {element: HTMLInputElement | HTMLTextAreaElement; value: string; label: string}>): {filled: number; skipped: string[]} {
   let filled = 0;
   const skipped: string[] = [];
   for (const item of selected) {
-    const element = doc.querySelector<HTMLInputElement | HTMLTextAreaElement>('[data-apply-weave-field="' + item.id + '"]');
-    if (!element || element.disabled || element.readOnly || (element.value && !overwrite)) { skipped.push(item.id); continue; }
+    const scanned = expected.get(item.id);
+    const element = scanned?.element;
+    if (!element || !element.isConnected || !isEligible(element) || element.value || scanned.value !== item.value || scanned.label !== labelOf(element)) { skipped.push(item.id); continue; }
     if (!['INPUT', 'TEXTAREA'].includes(element.tagName) || (element instanceof doc.defaultView!.HTMLInputElement && !['text', 'email', 'tel', 'url', 'date'].includes(element.type.toLowerCase()))) { skipped.push(item.id); continue; }
     const setter = Object.getOwnPropertyDescriptor(element instanceof doc.defaultView!.HTMLInputElement ? doc.defaultView!.HTMLInputElement.prototype : doc.defaultView!.HTMLTextAreaElement.prototype, 'value')?.set;
     if (!setter) { skipped.push(item.id); continue; }
