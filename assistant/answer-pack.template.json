@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "applicationId": "AW-YYYYMMDD-XXXXXX",
+  "profileVersion": "YYYY-MM-DD-HASH",
+  "resumeVersionId": "SDE",
+  "answers": [
+    {
+      "question": "Why are you a fit for this role?",
+      "answer": "Replace with a fact-grounded answer.",
+      "factIds": ["F001"],
+      "approved": false
+    }
+  ]
+}

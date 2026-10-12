@@ -1,0 +1,48 @@
+<!doctype html>
+<html><head><base target="_top"><meta charset="utf-8"><style>
+  body{font:13px system-ui,sans-serif;color:#17324d;margin:16px}h2{font-size:17px;margin:0 0 12px}h3{margin:20px 0 8px}
+  label{display:block;margin:10px 0 4px;font-weight:600}input,select,textarea,button{box-sizing:border-box;width:100%;font:inherit}
+  input,select,textarea{padding:8px;border:1px solid #b9c7d3;border-radius:6px}textarea{min-height:58px}
+  button{margin-top:12px;padding:9px;border:0;border-radius:6px;background:#146b72;color:white;font-weight:700;cursor:pointer}
+  button.secondary{background:#e7eef2;color:#17324d}.note{color:#506273;font-size:12px}.message{margin:12px 0;white-space:pre-wrap}
+</style></head><body>
+  <h2>ApplyWeave</h2><p class="note">Record the role before applying. Update it after you actually submit.</p>
+  <div id="message" class="message" role="status"></div>
+  <h3>Add application</h3>
+  <form id="add">
+    <label>Company<input name="company" required></label><label>Job title<input name="title" required></label>
+    <label>Role family<select name="roleFamily"><option value="">Choose</option><option>Software Development Engineer</option><option>Frontend Engineer</option><option>Backend Engineer</option><option>Full Stack Developer</option><option>AI Engineer</option><option>MERN Developer</option></select></label>
+    <label>Source<select name="source"><option value="">Choose</option><option>LinkedIn</option><option>Wellfound</option><option>Company portal</option><option>Referral</option><option>Other</option></select></label>
+    <label>Job URL<input name="jobUrl" type="url"></label><label>Location<input name="location"></label>
+    <label>Work mode<select name="workMode"><option>Unknown</option><option>Remote</option><option>Hybrid</option><option>On-site</option></select></label>
+    <label>Compensation (LPA)<input name="compensationLpa" type="number" min="0" step="0.1"></label>
+    <label>Next action<input name="nextAction" placeholder="Review JD and prepare application"></label>
+    <label>Due date<input name="dueDate" type="date"></label>
+    <label><input name="allowDuplicate" type="checkbox" style="width:auto"> Record a second application for the same role</label>
+    <button type="submit">Save role</button>
+  </form>
+  <h3>Update application</h3>
+  <form id="update">
+    <label>Application<select name="applicationId" id="applicationId" required></select></label>
+    <label>Status<select name="status"><option>Saved</option><option>Preparing</option><option>Applied</option><option>Assessment</option><option>Interview</option><option>Offer</option><option>Rejected</option><option>Withdrawn</option></select></label>
+    <label>Date applied<input name="dateApplied" type="date"></label>
+    <label>Resume submitted<input name="resumeVersion" placeholder="Exact PDF filename"></label>
+    <label>Answer pack ID<input name="answerPackId"></label>
+    <label>Next action<input name="nextAction"></label><label>Due date<input name="dueDate" type="date"></label>
+    <label>Interview date<input name="interviewDate" type="date"></label>
+    <label>Outcome / reason<input name="outcome"></label><label>Notes<textarea name="notes"></textarea></label>
+    <button type="submit">Update role</button>
+  </form>
+  <h3>Approved profile</h3><p class="note">Only checked rows in Profile &amp; Answers are exported.</p>
+  <button id="export" class="secondary">Download profile JSON</button>
+  <script>
+    const message = document.getElementById('message');
+    function show(text, error) { message.textContent = text; message.style.color = error ? '#a32222' : '#146b72'; }
+    function data(form) { const out = Object.fromEntries(new FormData(form)); out.allowDuplicate = form.elements.allowDuplicate?.checked || false; return out; }
+    function refresh() { google.script.run.withSuccessHandler(rows => { const select = document.getElementById('applicationId'); select.replaceChildren(); rows.forEach(row => { const option = document.createElement('option'); option.value=row.id; option.textContent=row.label; select.append(option); }); }).withFailureHandler(e => show(e.message,true)).listApplications(); }
+    document.getElementById('add').addEventListener('submit', e => { e.preventDefault(); google.script.run.withSuccessHandler(result => { show('Saved '+result.applicationId+(result.duplicateWarning?'\n'+result.duplicateWarning:'')); e.target.reset(); refresh(); }).withFailureHandler(error => show(error.message,true)).addApplication(data(e.target)); });
+    document.getElementById('update').addEventListener('submit', e => { e.preventDefault(); google.script.run.withSuccessHandler(result => { show('Updated '+result.applicationId+' to '+result.status); refresh(); }).withFailureHandler(error => show(error.message,true)).updateApplication(data(e.target)); });
+    document.getElementById('export').addEventListener('click', () => google.script.run.withSuccessHandler(profile => { const blob = new Blob([JSON.stringify(profile,null,2)],{type:'application/json'}); const link=document.createElement('a'); link.href=URL.createObjectURL(blob); link.download='applyweave-profile-'+profile.profileVersion+'.json'; link.click(); setTimeout(()=>URL.revokeObjectURL(link.href),1000); show('Approved profile exported.'); }).withFailureHandler(error => show(error.message,true)).exportApprovedProfile());
+    refresh();
+  </script>
+</body></html>
