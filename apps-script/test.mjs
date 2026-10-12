@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
+import { createHash } from 'node:crypto';
 import vm from 'node:vm';
 
 function makeTracker() {
@@ -44,4 +45,24 @@ test('application lifecycle keeps stable ID, prevents duplicates, and preserves 
   assert.equal(rows[1][15], '');
   assert.equal(api.getDueActions().length, 0);
   assert.equal(api.listApplications()[0].id, saved.applicationId);
+});
+
+test('approved profile imports only into an empty tab and exports a versioned contract', () => {
+  const rows = [Array(7).fill('')];
+  const sheet = {
+    getLastRow: () => rows.length,
+    getRange(row, column, height = 1, width = 1) { return {
+      getValues: () => Array.from({length:height}, (_, i) => Array.from({length:width}, (_, j) => rows[row + i - 1]?.[column + j - 1] ?? '')),
+      setValues: values => { values.forEach((entry, i) => { rows[row + i - 1] = entry; }); }
+    }; }
+  };
+  const context = {SpreadsheetApp:{getActiveSpreadsheet:()=>({getSheetByName:()=>sheet})},Utilities:{DigestAlgorithm:{SHA_256:'sha256'},computeDigest:(_algorithm,text)=>Array.from(createHash('sha256').update(text).digest()),base64EncodeWebSafe:bytes=>Buffer.from(bytes).toString('base64url'),formatDate:()=> '2026-10-13'},Session:{getScriptTimeZone:()=> 'Asia/Kolkata'},Date,Set,Number,String,Error,Object};
+  const api = vm.runInNewContext(source + '\n({importApprovedProfile, exportApprovedProfile})', context);
+  const input = {schemaVersion:1, personal:{fullName:'Example Candidate'}, facts:[{id:'F1',claim:'Built a project',source:'candidate'}],standardAnswers:[],resumeVersions:[{id:'SDE',filename:'resume.pdf'}]};
+  assert.equal(api.importApprovedProfile(input).importedRows, 3);
+  assert.throws(() => api.importApprovedProfile(input), /already has rows/);
+  const output = api.exportApprovedProfile();
+  assert.equal(output.personal.fullName, 'Example Candidate');
+  assert.equal(output.facts[0].id, 'F1');
+  assert.match(output.profileVersion, /^2026-10-13-/);
 });

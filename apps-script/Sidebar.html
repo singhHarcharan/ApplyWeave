@@ -34,6 +34,8 @@
     <button type="submit">Update role</button>
   </form>
   <h3>Approved profile</h3><p class="note">Only checked rows in Profile &amp; Answers are exported.</p>
+  <label>Import approved profile JSON<input id="importProfile" type="file" accept="application/json,.json"></label>
+  <button id="import" class="secondary">Import into empty profile tab</button>
   <button id="export" class="secondary">Download profile JSON</button>
   <script>
     const message = document.getElementById('message');
@@ -43,6 +45,7 @@
     document.getElementById('add').addEventListener('submit', e => { e.preventDefault(); google.script.run.withSuccessHandler(result => { show('Saved '+result.applicationId+(result.duplicateWarning?'\n'+result.duplicateWarning:'')); e.target.reset(); refresh(); }).withFailureHandler(error => show(error.message,true)).addApplication(data(e.target)); });
     document.getElementById('update').addEventListener('submit', e => { e.preventDefault(); google.script.run.withSuccessHandler(result => { show('Updated '+result.applicationId+' to '+result.status); refresh(); }).withFailureHandler(error => show(error.message,true)).updateApplication(data(e.target)); });
     document.getElementById('export').addEventListener('click', () => google.script.run.withSuccessHandler(profile => { const blob = new Blob([JSON.stringify(profile,null,2)],{type:'application/json'}); const link=document.createElement('a'); link.href=URL.createObjectURL(blob); link.download='applyweave-profile-'+profile.profileVersion+'.json'; link.click(); setTimeout(()=>URL.revokeObjectURL(link.href),1000); show('Approved profile exported.'); }).withFailureHandler(error => show(error.message,true)).exportApprovedProfile());
+    document.getElementById('import').addEventListener('click', async () => { try { const file=document.getElementById('importProfile').files[0]; if(!file) throw new Error('Choose a profile JSON file.'); const profile=JSON.parse(await file.text()); google.script.run.withSuccessHandler(result => show('Imported '+result.importedRows+' approved profile rows.')).withFailureHandler(error => show(error.message,true)).importApprovedProfile(profile); } catch(error) { show(error.message,true); } });
     refresh();
   </script>
 </body></html>

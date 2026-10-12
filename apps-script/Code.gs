@@ -246,6 +246,39 @@ function exportApprovedProfile() {
   return profile;
 }
 
+function importApprovedProfile(profile) {
+  if (!profile || profile.schemaVersion !== 1 || !profile.personal || !Array.isArray(profile.facts) || !Array.isArray(profile.resumeVersions) || !Array.isArray(profile.standardAnswers)) {
+    throw new Error('Import an ApplyWeave approved profile JSON file.');
+  }
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(AW.profile);
+  if (!sheet) throw new Error('Run Set up tracker first.');
+  if (sheet.getLastRow() > 1) throw new Error('Profile & Answers already has rows. Review them before importing another file; no data was changed.');
+  const now = new Date();
+  const rows = [];
+  Object.entries(profile.personal).forEach(([key, value]) => {
+    if (typeof value !== 'string' || !value.trim()) return;
+    if (/password|cookie|token|government/i.test(key)) throw new Error('Unsupported contact field: ' + key);
+    rows.push(['Contact', key, value, 'Candidate confirmation', true, now, '']);
+  });
+  const ids = new Set();
+  profile.facts.forEach(fact => {
+    if (!fact.id || !fact.claim || ids.has(fact.id)) throw new Error('Facts need unique IDs and non-empty claims.');
+    ids.add(fact.id);
+    rows.push(['Fact', fact.id, fact.claim, fact.source || '', true, now, '']);
+  });
+  profile.standardAnswers.forEach(answer => {
+    if (!answer.key || !answer.text || !Array.isArray(answer.factIds) || !answer.factIds.length || answer.factIds.some(id => !ids.has(id))) throw new Error('Standard answers need approved supporting Fact IDs.');
+    rows.push(['Standard answer', answer.key, answer.text, 'Candidate approved', true, now, answer.factIds.join(', ')]);
+  });
+  profile.resumeVersions.forEach(resume => {
+    if (!resume.id || !resume.filename) throw new Error('Resume entries need an ID and filename.');
+    rows.push(['Resume', resume.id, resume.filename, 'Candidate provided PDF', true, now, '']);
+  });
+  if (!rows.length) throw new Error('The profile has no approved content.');
+  sheet.getRange(2, 1, rows.length, 7).setValues(rows);
+  return {importedRows: rows.length};
+}
+
 function setListRule_(range, items) {
   range.setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(items, true).setAllowInvalid(false).build());
 }

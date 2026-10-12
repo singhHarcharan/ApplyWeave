@@ -33,7 +33,7 @@ Add a role from the sidebar before applying. Move it to **Applied** only after t
 
 `Type` is one of `Contact`, `Fact`, `Standard answer`, `Resume`. `Key / Fact ID` is a contact field name (`fullName`, `email`, `phone`, `location`, `linkedin`, `github`, `portfolio`, `availability`), a stable fact ID (`F001`), an answer key, or a resume ID (`SDE`, `MERN`, `PYTHON`, `STARTUP`). `Value / Approved Wording` is the exact approved text or PDF filename. `Source` records the resume or direct confirmation. Check `Approved` only after review. Standard answers use comma-separated supporting fact IDs in the last column.
 
-The source audit is in `private/profile-review.md`, which is excluded from Git. Do not copy its claims to approved rows until they are checked. The Sheet currently has link-based public viewing; keep profile rows empty until visibility is restricted.
+The source audit and confirmed export are in `private/`, excluded from Git. After the Sheet is private and editable, import `private/approved-profile.json` from the sidebar into the empty profile tab, then export it again from the Sheet. The Sheet currently has link-based public viewing; keep profile rows empty until visibility is restricted.
 
 ## 2. Prepare an application
 
