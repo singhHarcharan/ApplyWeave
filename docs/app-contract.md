@@ -25,3 +25,14 @@ Dashboard / Applications / Prepare / Profile & Resumes / Settings. Live data, no
 All other private API routes, including state, profile, resume downloads, packs, exports, configuration, and sync, return `401 AUTH_REQUIRED` without a session. `POST /api/auth/logout` invalidates the browser session while retaining the Google grant. Sessions are in memory and end on server restart. Fresh installations configure credentials through `npm run configure-google -- /path/client.json SPREADSHEET_ID` before using the login screen.
 
 A disabled Sheets API returns `503` with `{code:"SHEETS_API_DISABLED",error,setupUrl}`. The UI offers the official Cloud setup link and retry. A Sheets permission error is distinct from an app session expiration.
+
+
+## Hosted mode
+
+`APPLYWEAVE_MODE=hosted` (or Vercel) selects Postgres persistence, configured HTTPS origin and Web OAuth. See [hosted-deployment.md](hosted-deployment.md). Local mode remains available. `/api/state` adds `hostingMode` and safe AI provider/model metadata in `connection`.
+
+All session methods are asynchronous; PostgreSQL sessions and browser-bound OAuth state survive instances. Google credentials are environment-owned and token data is encrypted. In hosted mode configuration mutation and the optional Apps Script installer are unavailable; ordinary Sheets sync is supported.
+
+`POST /api/resumes {id,filename,dataBase64}` requires authentication/CSRF, safe PDF filename and a maximum 3 MB decoded file. New catalogue IDs/filenames only; profile version advances. PDF downloads still require owner authentication.
+
+`POST /api/generate` accepts optional `requestId` for retry idempotency. Hosted calls await bounded provider execution; polling uses persisted job state. Pack save and successful job completion share a database transaction. `AI_DAILY_LIMIT` includes failed attempts; manual draft/approval/export does not consume provider quota. Stale application, profile, preferences or saved pack changes reject the result.

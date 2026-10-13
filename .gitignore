@@ -9,3 +9,5 @@ app/dist/
 .env.*
 !.env.example
 coverage/
+
+.vercel/

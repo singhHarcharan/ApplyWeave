@@ -85,7 +85,9 @@ type Pack = {
     compensationCheck: string;
   };
 };
+const localBrowser = ["127.0.0.1", "localhost"].includes(window.location.hostname);
 type State = {
+  hostingMode?: "local" | "hosted";
   applications: Application[];
   profile: Profile;
   preferences: Record<string, any>;
@@ -96,6 +98,8 @@ type State = {
     googleEmail: string | null;
     spreadsheetId: string;
     aiAvailable: boolean;
+    aiProvider?: string;
+    aiModel?: string | null;
     scriptAuthorized?: boolean;
     scriptInstalled?: boolean;
   };
@@ -229,18 +233,12 @@ function Login({
           </button>
           <p className="login-browser-hint">
             Use Chrome for Google sign-in. If Google blocks an embedded browser,
-            open <code>http://127.0.0.1:4318</code> in Chrome.
+            open <code>{window.location.origin}</code> in Chrome.
           </p>
           {!configured && (
             <div className="login-setup">
-              <strong>Connect Google on this computer first</strong>
-              <p>
-                Download your Google Desktop OAuth client JSON, then run this
-                command from the ApplyWeave project folder:
-              </p>
-              <code>
-                npm run configure-google -- /path/client.json spreadsheet-id
-              </code>
+              <strong>{localBrowser ? "Connect Google on this computer first" : "Google sign-in is being configured"}</strong>
+              {localBrowser ? <><p>Download your Google Desktop OAuth client JSON, then run this command from the ApplyWeave project folder:</p><code>npm run configure-google -- /path/client.json spreadsheet-id</code></> : <p>The workspace owner needs to complete the hosted Google connection. Check again once setup is complete.</p>}
               <p>
                 Keep the client file private. Once configured, check again to
                 continue.
@@ -404,10 +402,10 @@ function App() {
   }
   async function loadSession() {
     const r = await fetch("/api/auth/session", { cache: "no-store" });
-    if (!r.ok)
-      throw new Error(
-        "Could not check your sign-in. Make sure ApplyWeave is running and try again.",
-      );
+    if (!r.ok) {
+      const problem=await r.json().catch(()=>null);
+      throw new Error(typeof problem?.error === "string" ? problem.error : "Could not check sign-in. The workspace may be starting or temporarily unavailable; try again.");
+    }
     const current: AuthSession = await r.json();
     token.current = current.csrfToken;
     setSession(current);
@@ -751,7 +749,7 @@ function App() {
                 <p>
                   The Google Sheets API is disabled for this connection's Google
                   Cloud project. Enable it, allow a moment for the change to
-                  apply, then retry. Your local changes are still pending.
+                  apply, then retry. Your workspace changes are still pending.
                 </p>
                 <div className="button-row">
                   <a
@@ -844,7 +842,7 @@ function App() {
             <span>
               {state.lastSyncedAt
                 ? `Last synced ${new Date(state.lastSyncedAt).toLocaleString("en-IN")}`
-                : "Your changes stay local until you sync."}
+                : "Your changes stay in this workspace until you sync."}
             </span>
           </footer>
         </main>
@@ -1263,7 +1261,7 @@ function Applications({
         )}
         <div className="table-footer">
           {rows.length} of {state.applications.length} applications
-          <span>Changes are saved locally; sync when you are ready.</span>
+          <span>Changes are saved to your workspace; sync when you are ready.</span>
         </div>
       </section>
     </>
@@ -1472,7 +1470,7 @@ function ApplicationDrawer({
             )}
           </div>
           <div className="drawer-footer">
-            <span>Saved locally. Sync to update Sheets.</span>
+            <span>Saved to your workspace. Sync to update Sheets.</span>
             <button type="button" className="secondary" onClick={close}>
               Cancel
             </button>
@@ -1566,20 +1564,18 @@ function Prepare({
       setWorking("");
     }
   }
+  const generationAttempt = useRef<{signature:string;requestId:string}|null>(null);
   async function generate() {
     setWorking("generate");
     setLocalError("");
     try {
-      await request(
-        "/applications/" + encodeURIComponent(id),
-        {
-          jobDescription: jd,
-          status:
-            application?.status === "Saved" ? "Preparing" : application?.status,
-        },
-        "PATCH",
-      );
+      const signature=JSON.stringify({applicationId:id,jobDescription:jd,questions,profileVersion:state.profile.profileVersion,preferences:state.preferences});
+      if(generationAttempt.current?.signature!==signature){
+        await request("/applications/" + encodeURIComponent(id),{jobDescription:jd,status:application?.status === "Saved" ? "Preparing" : application?.status},"PATCH");
+        generationAttempt.current={signature,requestId:crypto.randomUUID()};
+      }
       const { jobId } = await request("/generate", {
+        requestId:generationAttempt.current.requestId,
         applicationId: id,
         jobDescription: jd,
         questions: questions.filter((q) => q.question.trim()),
@@ -1587,6 +1583,7 @@ function Prepare({
       while (alive.current) {
         await new Promise((r) => setTimeout(r, 2000));
         const result = await request("/generate/" + encodeURIComponent(jobId));
+        if(result.status !== "running")generationAttempt.current=null;
         if (!alive.current) return;
         if (result.status === "failed")
           throw new Error(result.error || "Preparation failed.");
@@ -1849,7 +1846,7 @@ function Prepare({
             <p className="helper">
               {state.connection.aiAvailable
                 ? "Uses your verified profile. Every answer starts unapproved."
-                : "Codex is unavailable. You can still write or import an answer pack below. Check Settings for setup."}
+                : "Answer generation is unavailable. You can still write or import an answer pack below. Check Settings for setup."}
             </p>
             <div className="button-row">
               <button
@@ -2273,6 +2270,8 @@ function ProfileView({
     [editing, setEditing] = useState(false),
     [personalReviewed, setPersonalReviewed] = useState(false),
     [answersReviewed, setAnswersReviewed] = useState(false);
+  const [resumeId,setResumeId] = useState("");
+  const [resumeFile,setResumeFile] = useState<File|null>(null);
   const changedFacts = profile.facts.filter(
     (f) =>
       JSON.stringify(f) !==
@@ -2292,7 +2291,7 @@ function ProfileView({
       <Heading
         eyebrow="YOUR FOUNDATION"
         title="Experience you can stand behind."
-        description="Your verified career facts power every answer. Profile changes are local until reviewed and synced."
+        description="Your verified career facts power every answer. Profile changes stay in this workspace until explicitly shared with Sheets."
         action={
           <button
             className="secondary"
@@ -2371,7 +2370,7 @@ function ProfileView({
                   ? "Matches Sheet"
                   : state.profileSyncStatus === "conflict"
                     ? "Review sync conflict"
-                    : "Local profile"}
+                    : "Workspace profile"}
               </Badge>
               <ShieldCheck size={15} />
               Profile version <code>{state.profile.profileVersion}</code>
@@ -2385,6 +2384,17 @@ function ProfileView({
               <p>Choose the strongest starting point for each role.</p>
             </div>
             <FileText size={20} />
+          </div>
+          <div className="panel-body">
+            <Field label="New resume version ID"><input value={resumeId} onChange={e=>setResumeId(e.target.value)} placeholder="e.g. FRONTEND_V2" /></Field>
+            <Field label="Reviewed resume PDF (up to 3 MB)"><input type="file" accept="application/pdf,.pdf" onChange={e=>setResumeFile(e.target.files?.[0] || null)} /></Field>
+            <p className="helper">Use a new ID and filename. Adding a version updates your profile; review older answer packs again.</p>
+            <button className="secondary" disabled={!!busy || !resumeFile || !resumeId.trim() || editing} onClick={()=>run("resume-upload",async()=>{
+              if(!resumeFile || resumeFile.size>3*1024*1024)throw new Error("Choose a PDF up to 3 MB.");
+              const dataBase64=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(",")[1]);reader.onerror=()=>reject(new Error("Could not read PDF."));reader.readAsDataURL(resumeFile);});
+              const result=await request("/resumes",{id:resumeId,filename:resumeFile.name,dataBase64});
+              setProfile(result.profile);setResumeId("");setResumeFile(null);
+            },"Resume uploaded to your private library.")}><Upload size={16}/>Upload resume</button>
           </div>
           {profile.resumeVersions.map((r) => (
             <div className="resume-row" key={r.id}>
@@ -2805,7 +2815,7 @@ function SettingsView({
                       run(
                         "disconnect",
                         () => request("/auth/google/disconnect", {}),
-                        "Google account disconnected. Your local applications are still available.",
+                        "Google account disconnected. Your saved applications are still available.",
                       )
                     }
                   >
@@ -2821,9 +2831,9 @@ function SettingsView({
                 </p>
                 <div className="note">
                   Your ChatGPT Google Drive connection works inside ChatGPT.
-                  This local app needs its own Google authorization.
+                  ApplyWeave needs its own Google authorization.
                 </div>
-                <details
+                {state.hostingMode !== "hosted" && <><details
                   className="setup-details"
                   open={!state.connection.googleConfigured}
                 >
@@ -2880,8 +2890,9 @@ function SettingsView({
                     placeholder="Paste your tracker link or spreadsheet ID"
                   />
                 </Field>
+                </>}
                 <div className="button-row">
-                  <button
+                  {state.hostingMode !== "hosted" && <button
                     className="secondary"
                     disabled={!client || !sheet.trim() || !!busy}
                     onClick={() =>
@@ -2900,7 +2911,7 @@ function SettingsView({
                   >
                     <Check size={16} />
                     Save configuration
-                  </button>
+                  </button>}
                   <button
                     className="primary"
                     disabled={!state.connection.googleConfigured || !!busy}
@@ -2919,13 +2930,13 @@ function SettingsView({
             )}
             <p className="helper">
               Applications sync with Google Sheets. Full answer packs and search
-              preferences stay on this computer.
+              preferences stay in your private workspace.
             </p>
             <p className="helper">
               {state.lastSyncedAt
                 ? "Last synced " +
                   new Date(state.lastSyncedAt).toLocaleString("en-IN")
-                : "No sync yet. Your changes are stored on this computer."}
+                : "No sync yet. Your changes are saved in your private workspace."}
             </p>
           </div>
         </section>
@@ -3062,14 +3073,14 @@ function SettingsView({
               />
               <strong>
                 {state.connection.aiAvailable
-                  ? "Codex is ready"
-                  : "Codex is not available"}
+                  ? `${state.connection.aiProvider === "codex" ? "Codex" : "AI assistant"} is configured`
+                  : "Answer generation is not configured"}
               </strong>
             </div>
             <p>
               {state.connection.aiAvailable
-                ? "Your existing Codex sign-in is available for drafting applications. Review every generated answer before using it."
-                : "Install Codex CLI and sign in on this computer, then restart ApplyWeave. You can write and import answer packs while setting it up."}
+                ? `Drafting uses ${state.connection.aiProvider || "your configured provider"}${state.connection.aiModel ? " · " + state.connection.aiModel : ""}. Review every answer before using it.`
+                : state.hostingMode === "hosted" ? "The owner needs to configure a hosted AI provider. You can write and import answer packs while setup is completed." : "Install Codex CLI and sign in on this computer, then restart ApplyWeave. You can write and import answer packs while setting it up."}
             </p>
             <p className="helper">
               Only the selected job description, questions, and approved profile
@@ -3088,7 +3099,7 @@ function SettingsView({
           <div className="panel-body">
             <p>
               Backups include your applications, profile, preferences, and
-              answer packs. Store them somewhere private.
+              answer packs. PDFs and Google credentials are excluded. Download your resume PDFs separately from Profile &amp; resumes and keep both backups private.
             </p>
             <button
               className="secondary"
@@ -3126,7 +3137,7 @@ function SettingsView({
                     checked={restoreConfirmed}
                     onChange={(e) => setRestoreConfirmed(e.target.checked)}
                   />
-                  Replace my local workspace with this backup. I have saved a
+                  Replace my workspace with this backup. I have saved a
                   current copy.
                 </label>
                 <button
@@ -3159,7 +3170,7 @@ function SettingsView({
             <div>
               <h2>Changes that need your decision</h2>
               <p>
-                The local record and Sheet both changed. Choose which record to
+                The workspace record and Sheet both changed. Choose which record to
                 keep.
               </p>
             </div>
@@ -3193,7 +3204,7 @@ function SettingsView({
                   )
                 }
               >
-                Keep local version
+                Keep workspace version
               </button>
               <button
                 className="secondary"
@@ -3228,11 +3239,11 @@ function SettingsView({
         </div>
         <div className="panel-body">
           <p>
-            The local app already handles your full application workflow.
+            ApplyWeave already handles your full application workflow.
             Install the companion sidebar to use the same controls inside Google
             Sheets.
           </p>
-          {!state.connection.scriptInstalled && (
+          {state.hostingMode !== "hosted" && !state.connection.scriptInstalled && (
             <div className="note">
               Enable the Google Apps Script API in your Google Cloud project and
               enable API access in{" "}
@@ -3247,8 +3258,9 @@ function SettingsView({
               your tracker script.
             </div>
           )}
+          {state.hostingMode === "hosted" && <p className="note">The optional sidebar can be installed through the local companion or Google Apps Script editor. Tracking and syncing already work here.</p>}
           <div className="button-row">
-            {!state.connection.scriptAuthorized && (
+            {state.hostingMode !== "hosted" && !state.connection.scriptAuthorized && (
               <button
                 className="secondary"
                 disabled={!state.connection.googleConfigured || !!busy}
@@ -3265,7 +3277,7 @@ function SettingsView({
                 Authorize sidebar setup
               </button>
             )}
-            {state.connection.scriptAuthorized &&
+            {state.hostingMode !== "hosted" && state.connection.scriptAuthorized &&
               !state.connection.scriptInstalled && (
                 <button
                   className="primary"

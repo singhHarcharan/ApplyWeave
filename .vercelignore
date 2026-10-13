@@ -1,0 +1,10 @@
+private/
+.env
+.env.*
+!.env.example
+node_modules/
+extension/node_modules/
+extension/dist/
+.git/
+coverage/
+**/*.test.ts

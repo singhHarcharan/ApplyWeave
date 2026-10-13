@@ -1,21 +1,23 @@
 import express, {type Express, type Request, type Response, type NextFunction} from 'express';
-import {createHash, randomBytes} from 'node:crypto';
-import {readFile, realpath} from 'node:fs/promises';
+import {createHash, createHmac, randomBytes} from 'node:crypto';
+import {readFile, realpath, mkdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import type {Application, AnswerPack, ProfileExport} from '../shared/types.js';
 import {AppError, createApplication, patchApplication, validatePack, validatePreferences, validateProfile} from './model.js';
-import {WorkspaceStore, type Workspace} from './store.js';
+import {WorkspaceStore, PostgresWorkspaceStore, type Workspace, type WorkspaceRepository} from './store.js';
+import {GenerationJobs} from './jobs.js';
+import {isHosted, hostedOrigin, tokenEncryptionKey} from './hosted-config.js';
+import {SupabaseResumeStorage, safeResumeFilename, validateResumePdf} from './resume-storage.js';
 import {GoogleOAuth} from './google.js';
 import {Sessions, cookieValue, clearOAuthBinding, OAUTH_BIND_COOKIE} from './auth.js';
 import {AppsScriptInstaller} from './apps-script.js';
 import {GoogleSheetsClient, profileContentHash, resolveConflict, resolveProfileConflict, syncWorkspace, type SheetsGateway} from './sheets.js';
-import {aiAvailable, generatePack, type GenerationInput} from './generator.js';
+import {aiAvailable, aiProviderStatus, generatePack, type GenerationInput} from './generator.js';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const DEFAULT_HOST = '127.0.0.1:4318';
 const ORIGINS = new Set(['http://127.0.0.1:4318','http://127.0.0.1:5173']);
-type Job = {applicationId:string;status:'running'|'complete'|'failed';pack?:AnswerPack;error?:string};
 type Dependencies = {
   privateDir?:string; distDir?:string; allowedHost?:string; gateway?:SheetsGateway;
   aiAvailable?:typeof aiAvailable; generatePack?:typeof generatePack; oauthFetcher?:typeof fetch;
@@ -61,26 +63,32 @@ function checkBackup(value:unknown):Workspace {
   return {schemaVersion:1,applications,profile,preferences,packs,lastSyncedAt:null,conflicts:[],remoteRows:{},profileRemoteHash:null,profileLocalHashAtSync:null};
 }
 
-export async function createApp(deps:Dependencies = {}):Promise<{app:Express;store:WorkspaceStore;oauth:GoogleOAuth;csrfToken:string}> {
+export async function createApp(deps:Dependencies = {}):Promise<{app:Express;store:WorkspaceRepository;oauth:GoogleOAuth;csrfToken:string}> {
   const privateDir = deps.privateDir || path.join(ROOT,'private');
-  const store = new WorkspaceStore(privateDir); await store.init();
+  const hosted = isHosted();
+  const store:WorkspaceRepository = hosted ? new PostgresWorkspaceStore() : new WorkspaceStore(privateDir); await store.init();
+  const resumeStorage = hosted ? SupabaseResumeStorage.fromEnv() : null;
+  const appOrigin = hosted ? hostedOrigin() : 'http://127.0.0.1:4318';
+  if(hosted)tokenEncryptionKey();
+  const allowedOrigins = hosted ? new Set([appOrigin]) : new Set([...ORIGINS,...(deps.allowedHost ? [`http://${deps.allowedHost}`] : [])]);
   const oauth = new GoogleOAuth(privateDir,deps.oauthFetcher);
   const sessions = new Sessions();
   const scriptInstaller = new AppsScriptInstaller(oauth);
   const gateway = deps.gateway || new GoogleSheetsClient(oauth);
-  const csrfToken = randomBytes(32).toString('base64url');
-  const jobs = new Map<string,Job>();
+  const csrfToken = hosted ? createHmac('sha256',process.env.TOKEN_ENCRYPTION_KEY!).update('applyweave-csrf-v1').digest('base64url') : randomBytes(32).toString('base64url');
+  const jobs = new GenerationJobs(hosted);
   const app = express();
   app.disable('x-powered-by');
   app.use((req,res,next) => {
     res.setHeader('X-Content-Type-Options','nosniff');
+    res.setHeader('X-Frame-Options','DENY');
     res.setHeader('Referrer-Policy','no-referrer');
     if (req.path.startsWith('/api/')) res.setHeader('Cache-Control','no-store');
     const host = req.headers.host;
-    if (host !== (deps.allowedHost || DEFAULT_HOST) && host !== '127.0.0.1:5173') return res.status(403).json({error:'This local app accepts only its 127.0.0.1 address.',code:'HOST'});
+    if (host !== (deps.allowedHost || (hosted ? new URL(appOrigin).host : DEFAULT_HOST)) && (hosted || host !== '127.0.0.1:5173')) return res.status(403).json({error:'This address is not configured for ApplyWeave.',code:'HOST'});
     const oauthCallback = req.method === 'GET' && req.path === '/api/auth/google/callback';
     const origin = req.get('origin');
-    if (!oauthCallback && origin && !ORIGINS.has(origin)) return res.status(403).json({error:'Cross-origin request blocked.',code:'ORIGIN'});
+    if (!oauthCallback && origin && !allowedOrigins.has(origin)) return res.status(403).json({error:'Cross-origin request blocked.',code:'ORIGIN'});
     if (!oauthCallback && req.get('sec-fetch-site') === 'cross-site') return res.status(403).json({error:'Cross-site request blocked.',code:'ORIGIN'});
     next();
   });
@@ -91,22 +99,22 @@ export async function createApp(deps:Dependencies = {}):Promise<{app:Express;sto
   });
 
   app.get('/api/auth/session',wrap(async (req,res) => {
-    const user=sessions.user(req);
+    const user=await sessions.user(req);
     res.json({authenticated:!!user,user:user?{email:user.email}:null,configured:!!(await oauth.config()),csrfToken});
   }));
   app.post('/api/auth/google/start',wrap(async (req,res) => {
     const browserBinding=randomBytes(32).toString('base64url');
-    const url=await oauth.start(req.body?.includeScript===true,browserBinding);
-    res.cookie(OAUTH_BIND_COOKIE,browserBinding,{httpOnly:true,sameSite:'lax',secure:false,path:'/api/auth/google/callback',maxAge:10*60*1000});
+    const url=await oauth.start(!hosted && req.body?.includeScript===true,browserBinding);
+    res.cookie(OAUTH_BIND_COOKIE,browserBinding,{httpOnly:true,sameSite:'lax',secure:hosted,path:'/api/auth/google/callback',maxAge:10*60*1000});
     res.json({url});
   }));
   app.get('/api/auth/google/callback',async (req,res) => {
     try {
       if(req.query.error)throw new AppError('Google sign-in was cancelled.',400,'OAUTH_DENIED');
-      const user=await oauth.callback(req.query.code,req.query.state,cookieValue(req,OAUTH_BIND_COOKIE),store.read().profile.personal.email);
+      const user=await oauth.callback(req.query.code,req.query.state,cookieValue(req,OAUTH_BIND_COOKIE),(await store.read()).profile.personal.email);
       clearOAuthBinding(res);
-      sessions.destroy(req,res);
-      sessions.create(res,user);
+      await sessions.destroy(req,res);
+      await sessions.create(res,user);
       res.redirect(303,'/?google=connected');
     } catch(error) {
       clearOAuthBinding(res);
@@ -114,20 +122,22 @@ export async function createApp(deps:Dependencies = {}):Promise<{app:Express;sto
       res.redirect(303,`/?authError=${encodeURIComponent(code)}`);
     }
   });
-  app.post('/api/auth/logout',(req,res) => {
-    sessions.destroy(req,res);
+  app.post('/api/auth/logout',wrap(async (req,res) => {
+    await sessions.destroy(req,res);
     res.json({authenticated:false});
-  });
+  }));
   app.use('/api',(req,res,next) => {
-    if (!sessions.user(req)) return res.status(401).json({error:'Sign in with the approved Google account to use ApplyWeave.',code:'AUTH_REQUIRED'});
-    next();
+    sessions.user(req).then(user => {
+      if (!user) { res.status(401).json({error:'Sign in with the approved Google account to use ApplyWeave.',code:'AUTH_REQUIRED'}); return; }
+      next();
+    }).catch(next);
   });
 
   app.get('/api/state',wrap(async (_req,res) => {
-    const workspace = store.read();
-    const connection = {...await oauth.publicState(),aiAvailable:await (deps.aiAvailable || aiAvailable)()};
+    const workspace = await store.read();
+    const connection = {...await oauth.publicState(),aiAvailable:await (deps.aiAvailable || aiAvailable)(),aiProvider:aiProviderStatus().provider,aiModel:aiProviderStatus().model};
     const profileSyncStatus = workspace.conflicts.some(c => c.applicationId === 'PROFILE') ? 'conflict' : workspace.profileLocalHashAtSync && workspace.profileLocalHashAtSync === profileContentHash(workspace.profile) ? 'synced' : 'local';
-    res.json({applications:workspace.applications,profile:workspace.profile,preferences:workspace.preferences,packs:workspace.packs,connection,lastSyncedAt:workspace.lastSyncedAt,conflicts:workspace.conflicts,profileSyncStatus,csrfToken});
+    res.json({applications:workspace.applications,profile:workspace.profile,preferences:workspace.preferences,packs:workspace.packs,connection,hostingMode:hosted ? 'hosted' : 'local',lastSyncedAt:workspace.lastSyncedAt,conflicts:workspace.conflicts,profileSyncStatus,csrfToken});
   }));
   app.post('/api/applications',wrap(async (req,res) => {
     const input = objectBody(req.body);
@@ -159,7 +169,7 @@ export async function createApp(deps:Dependencies = {}):Promise<{app:Express;sto
     const profile = await store.mutate(workspace => { workspace.profile = validateProfile(body.profile,workspace.profile); return workspace.profile; });
     res.json({profile});
   }));
-  app.get('/api/profile/export',wrap(async (_req,res) => attachment(res,`applyweave-profile-${store.read().profile.profileVersion}.json`,store.read().profile)));
+  app.get('/api/profile/export',wrap(async (_req,res) => {const {profile}=await store.read();attachment(res,`applyweave-profile-${profile.profileVersion}.json`,profile);}));
   app.post('/api/packs',wrap(async (req,res) => {
     const body = objectBody(req.body);
     const pack = await store.mutate(workspace => {
@@ -177,7 +187,7 @@ export async function createApp(deps:Dependencies = {}):Promise<{app:Express;sto
     res.json({pack});
   }));
   app.get('/api/packs/:applicationId/export',wrap(async (req,res) => {
-    const workspace = store.read(); const id = String(req.params.applicationId);
+    const workspace = await store.read(); const id = String(req.params.applicationId);
     const pack = workspace.packs.find(p => p.applicationId === id);
     if (!pack) throw new AppError('Answer pack not found.',404,'NOT_FOUND');
     attachment(res,`applyweave-pack-${id}.json`,validatePack(pack,workspace.profile,id));
@@ -203,10 +213,37 @@ export async function createApp(deps:Dependencies = {}):Promise<{app:Express;sto
     res.json({configured:true});
   }));
   app.post('/api/auth/google/disconnect',wrap(async (_req,res) => { await oauth.disconnect(); res.json({disconnected:true}); }));
-  app.post('/api/apps-script/install',wrap(async (_req,res) => res.json(await scriptInstaller.install())));
+  app.post('/api/apps-script/install',wrap(async (_req,res) => {
+    if(hosted)throw new AppError('Install the optional Sheets sidebar from the local companion or Apps Script editor.',400,'LOCAL_ONLY');
+    res.json(await scriptInstaller.install());
+  }));
+  app.post('/api/resumes',wrap(async (req,res) => {
+    const body=objectBody(req.body),id=String(body.id || '').trim().toUpperCase();
+    if(!/^[A-Z0-9][A-Z0-9_-]{1,39}$/.test(id))throw new AppError('Use a resume ID of 2–40 letters, numbers, underscores or hyphens.');
+    const filename=safeResumeFilename(String(body.filename || ''));
+    if(typeof body.dataBase64!=='string' || body.dataBase64.length>4*1024*1024 || !/^[A-Za-z0-9+/]+={0,2}$/.test(body.dataBase64))throw new AppError('Choose a PDF up to 3 MB.');
+    const data=Buffer.from(body.dataBase64,'base64');validateResumePdf(data);
+    if(data.length>3*1024*1024)throw new AppError('Choose a PDF up to 3 MB.');
+    const profile=await store.mutate(async workspace=>{
+      if(workspace.profile.resumeVersions.some(r=>r.id===id || r.filename===filename))throw new AppError('Use a new resume ID and filename to preserve existing versions.',409,'RESUME_CONFLICT');
+      if(resumeStorage)await resumeStorage.upload(filename,data);
+      else {
+        const directory=path.join(privateDir,'resumes');await mkdir(directory,{recursive:true,mode:0o700});
+        try{await writeFile(path.join(directory,filename),data,{flag:'wx',mode:0o600});}
+        catch(error){if((error as NodeJS.ErrnoException).code==='EEXIST')throw new AppError('This filename already exists. Use a new version filename.',409,'RESUME_CONFLICT');throw error;}
+      }
+      workspace.profile=validateProfile({...workspace.profile,resumeVersions:[...workspace.profile.resumeVersions,{id,filename}]},workspace.profile);
+      return workspace.profile;
+    });
+    res.status(201).json({profile});
+  }));
   app.get('/api/resumes/:id',wrap(async (req,res) => {
-    const resume = store.read().profile.resumeVersions.find(r => r.id === req.params.id);
+    const resume = (await store.read()).profile.resumeVersions.find(r => r.id === req.params.id);
     if (!resume || path.basename(resume.filename) !== resume.filename || !resume.filename.toLowerCase().endsWith('.pdf')) throw new AppError('Resume not found.',404,'NOT_FOUND');
+    if(resumeStorage){
+      const bytes=await resumeStorage.download(resume.filename);
+      res.setHeader('Content-Disposition',`attachment; filename="${resume.filename}"`);res.type('pdf').send(bytes);return;
+    }
     const resumeDir = path.join(privateDir,'resumes');
     let resolved:string;
     try { resolved = await realpath(path.join(resumeDir,resume.filename)); }
@@ -216,7 +253,7 @@ export async function createApp(deps:Dependencies = {}):Promise<{app:Express;sto
     res.download(resolved,resume.filename);
   }));
   app.get('/api/backups/export',wrap(async (_req,res) => {
-    const workspace = store.read();
+    const workspace = await store.read();
     attachment(res,`applyweave-backup-${new Date().toISOString().slice(0,10)}.json`,workspace);
   }));
   app.post('/api/backups/import',wrap(async (req,res) => {
@@ -226,42 +263,47 @@ export async function createApp(deps:Dependencies = {}):Promise<{app:Express;sto
   }));
   app.post('/api/generate',wrap(async (req,res) => {
     const body = objectBody(req.body), id = String(body.applicationId || '');
-    const snapshot = store.read(), application = snapshot.applications.find(a => a.applicationId === id);
+    const snapshot = await store.read(), application = snapshot.applications.find(a => a.applicationId === id);
     if (!application) throw new AppError('Application not found.',404,'NOT_FOUND');
-    if ([...jobs.values()].some(job => job.applicationId === id && job.status === 'running')) throw new AppError('A draft is already being prepared for this application.',409,'GENERATION_RUNNING');
-    if (!(await (deps.aiAvailable || aiAvailable)())) throw new AppError('Codex CLI is not signed in. You can prepare answers manually.',503,'AI_UNAVAILABLE');
+    if (!(await (deps.aiAvailable || aiAvailable)())) throw new AppError(hosted ? 'Hosted AI is not configured. You can prepare answers manually.' : 'Codex CLI is not signed in. You can prepare answers manually.',503,'AI_UNAVAILABLE');
     const input = {applicationId:id,jobDescription:body.jobDescription,questions:body.questions} as GenerationInput;
     if (typeof input.jobDescription !== 'string' || input.jobDescription.trim().length < 30 || input.jobDescription.length > 60000 || !Array.isArray(input.questions) || input.questions.length > 30) throw new AppError('Provide a job description and up to 30 application questions.');
     const baselineApplication = digest(application);
     const baselinePack = digest(snapshot.packs.find(pack => pack.applicationId === id) || null);
-    const jobId = randomBytes(16).toString('base64url'); jobs.set(jobId,{applicationId:id,status:'running'});
-    const cleanup = setTimeout(() => jobs.delete(jobId),30*60*1000); cleanup.unref();
-    void (async () => {
+    const {id:jobId,existing}=await jobs.start(id,typeof body.requestId==='string'?body.requestId:undefined);
+    if(existing){res.status(202).json({jobId});return;}
+    const runGeneration = async () => {
       try {
         const raw = await (deps.generatePack || generatePack)(input,snapshot.profile,snapshot.preferences,application);
-        const pack = await store.mutate(workspace => {
+        const pack = await store.mutate(async (workspace,tx) => {
           const currentApp = workspace.applications.find(a => a.applicationId === id);
-          if (workspace.profile.profileVersion !== snapshot.profile.profileVersion || !currentApp || digest(currentApp) !== baselineApplication || digest(workspace.packs.find(pack => pack.applicationId === id) || null) !== baselinePack) throw new AppError('Profile, application, or saved answers changed during generation; run it again.',409,'STALE_PACK');
+          if (workspace.profile.profileVersion !== snapshot.profile.profileVersion || digest(workspace.preferences)!==digest(snapshot.preferences) || !currentApp || digest(currentApp) !== baselineApplication || digest(workspace.packs.find(pack => pack.applicationId === id) || null) !== baselinePack) throw new AppError('Profile, application, or saved answers changed during generation; run it again.',409,'STALE_PACK');
           const checked = validatePack({...raw,answers:raw.answers.map(a => ({...a,approved:false}))},workspace.profile,id);
           workspace.packs = workspace.packs.filter(p => p.applicationId !== id).concat(checked);
           const app = workspace.applications.find(a => a.applicationId === id)!;
           app.answerPackId = id;
           if (!app.resumeVersion && ['Saved','Preparing'].includes(app.status)) app.resumeVersion = checked.resumeVersionId;
           app.jobDescription = input.jobDescription; app.syncStatus = 'pending'; app.lastUpdated = new Date().toISOString();
+          if(tx){
+            const committed=await tx`UPDATE applyweave_generation_jobs SET status='complete',data=${tx.json({applicationId:id,status:'complete',pack:checked})},updated_at=now() WHERE id=${jobId} AND status='running' RETURNING id`;
+            if(!committed.length)throw new AppError('Generation expired before it could be saved. Please retry.',409,'GENERATION_EXPIRED');
+          }
           return checked;
         });
-        jobs.set(jobId,{applicationId:id,status:'complete',pack});
-      } catch (error) { jobs.set(jobId,{applicationId:id,status:'failed',error:error instanceof Error ? error.message : 'Generation failed.'}); }
-    })();
+        if(!hosted)await jobs.finish(jobId,{applicationId:id,status:'complete',pack});
+      } catch (error) { await jobs.finish(jobId,{applicationId:id,status:'failed',error:error instanceof AppError ? error.message : 'Generation failed. Please retry or prepare answers manually.'}); }
+    };
+    if(hosted)await runGeneration();
+    else void runGeneration().catch(()=>{});
     res.status(202).json({jobId});
   }));
   app.get('/api/generate/:jobId',wrap(async (req,res) => {
-    const job = jobs.get(req.params.jobId);
+    const job = await jobs.get(String(req.params.jobId));
     if (!job) throw new AppError('Generation job not found.',404,'NOT_FOUND');
     res.json(job);
   }));
   app.get('/api/extension/export/:applicationId',wrap(async (req,res) => {
-    const workspace = store.read(), id = String(req.params.applicationId);
+    const workspace = await store.read(), id = String(req.params.applicationId);
     if (!workspace.applications.some(a => a.applicationId === id)) throw new AppError('Application not found.',404,'NOT_FOUND');
     const pack = workspace.packs.find(p => p.applicationId === id);
     if (pack) validatePack(pack,workspace.profile,id);
@@ -280,7 +322,7 @@ export async function createApp(deps:Dependencies = {}):Promise<{app:Express;sto
     const parseError = typeof error === 'object' && error !== null && 'type' in error && ['entity.parse.failed','entity.too.large'].includes(String((error as {type:unknown}).type));
     const status = error instanceof AppError ? error.status : parseError ? (error as {status?:number}).status || 400 : 500;
     const code = error instanceof AppError ? error.code : parseError ? 'INVALID_JSON' : 'INTERNAL';
-    const message = error instanceof AppError ? error.message : parseError ? 'Request JSON is invalid or too large.' : 'An unexpected local error occurred.';
+    const message = error instanceof AppError ? error.message : parseError ? 'Request JSON is invalid or too large.' : 'An unexpected error occurred. Your saved workspace has been preserved.';
     const details = error instanceof AppError ? error.details : {};
     res.status(status).json({error:message,code,...details});
   });
@@ -289,6 +331,7 @@ export async function createApp(deps:Dependencies = {}):Promise<{app:Express;sto
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   createApp().then(({app}) => {
-    app.listen(4318,'127.0.0.1',() => { console.log('ApplyWeave: http://127.0.0.1:4318'); });
+    const hosted=isHosted();const port=hosted ? Number(process.env.PORT || 4318) : 4318;
+    app.listen(port,hosted ? '0.0.0.0' : '127.0.0.1',() => { console.log(`ApplyWeave listening on port ${port}`); });
   }).catch(error => { console.error(error); process.exitCode = 1; });
 }

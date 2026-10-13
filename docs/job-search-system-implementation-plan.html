@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>Job Search System — Implementation Plan</title>
+  <title>ApplyWeave — Free Hosting Implementation Plan</title>
   <style>
     :root {
       --ink: #16243a;
@@ -70,6 +70,8 @@
     th { color: #35506e; background: #f0f5fa; font-size: .78rem; letter-spacing: .025em; }
     tr:last-child td { border-bottom: 0; }
     code { padding: 2px 5px; border-radius: 5px; background: #eef2f6; color: #153b69; font-size: .86em; overflow-wrap: anywhere; }
+    pre { padding: 16px; background: #eef2f6; border-radius: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    pre code { padding: 0; }
     .callout { padding: 16px 18px; margin: 15px 0; border-left: 4px solid var(--teal); border-radius: 0 10px 10px 0; background: var(--teal-soft); }
     .callout.warning { border-color: #d29a2b; background: var(--gold-soft); }
     .callout strong { display: block; margin-bottom: 3px; }
@@ -89,240 +91,285 @@
   </style>
 </head>
 <body>
-  <div class="shell">
-    <header class="hero">
-      <p class="eyebrow">Personal job search system · implementation plan</p>
-      <h1>Track applications. Prepare answers. Fill forms faster.</h1>
-      <p class="lead">One plan for a Google Sheets application tracker, a resume-grounded application assistant, and a user-invoked Chrome helper for company application forms.</p>
-      <div class="meta"><span>Prepared 12 October 2026</span><span>Planning version 1.0</span><span>Chrome + Google Sheets</span><span>Owner: Harcharanpreet Singh</span></div>
-    </header>
+<div class="shell">
+  <header class="hero">
+    <p class="eyebrow">ApplyWeave · free hosting implementation plan</p>
+    <h1>Track applications. Prepare answers. Fill forms faster.</h1>
+    <p class="lead">Target: one hosted workspace for your Google Sheets tracker, application assistant and Chrome form helper, using Vercel or an alternative with a free deployment tier.</p>
+    <div class="meta"><span>Updated 13 October 2026</span><span>Hosted target · version 3</span><span>Chrome + Google Sheets</span></div>
+  </header>
+  <div class="layout">
+    <nav class="toc" aria-label="Document sections">
+      <strong>Contents</strong>
+      <a href="#summary">01 · Scope and status</a>
+      <a href="#architecture">02 · Architecture</a>
+      <a href="#setup">03 · Setup and sign-in</a>
+      <a href="#tracker">04 · Google Sheets tracker</a>
+      <a href="#assistant">05 · Application assistant</a>
+      <a href="#formfill">06 · Chrome helper</a>
+      <a href="#workflow">07 · Daily workflow</a>
+      <a href="#operations">08 · Recovery and troubleshooting</a>
+      <a href="#deployment">09 · Free hosting plan</a>
+      <a href="#acceptance">10 · Verification and next steps</a>
+      <a href="#sources">11 · References</a>
+    </nav>
+    <main>
+      <section id="summary">
+        <p class="section-label">01 / Scope and status</p>
+        <h2>What is ready today</h2>
+        <p>ApplyWeave runs on your computer at <a href="http://127.0.0.1:4318">127.0.0.1:4318</a>. The web workspace, tracker integration, answer generation and Chrome helper are implemented. Google owner sign-in and live Sheets sync were verified on 13 October 2026.</p>
+        <div class="callout"><strong>Deployment is now a required outcome.</strong>The recommended target is Vercel Hobby + Supabase Free, with Render Free as an alternative. The finished hosted app must work without this Mac running. <a href="#deployment">Section 9 defines the target architecture, phases, free-tier constraints and launch gates.</a> Hosted adapters, persistent authentication and deployment configuration are implemented; live account setup, migration and deployment are pending. See the <a href="hosted-deployment.md">deployment runbook</a>.</div>
+        <div class="grid three">
+          <div class="card"><span class="number">1</span><h3>Tracker</h3><p>Save roles, track stages, due actions and interviews, and sync records with a private Google Sheet.</p></div>
+          <div class="card"><span class="number">2</span><h3>Assistant</h3><p>Turn approved resume facts and a job description into a fit assessment, resume recommendation and reviewed answers.</p></div>
+          <div class="card"><span class="number">3</span><h3>Form helper</h3><p>Import one reviewed application bundle, preview matching fields and fill selected empty fields on approved company portals.</p></div>
+        </div>
+        <p style="margin-top:16px">The React workspace connects all three. No job scraping, automatic submissions or inbox monitoring is included. You discover roles, approve answers and submit applications.</p>
+        <div class="table-wrap"><table><thead><tr><th>Preference</th><th>Current setting</th></tr></thead><tbody>
+          <tr><td>Target roles</td><td>Software Development Engineer, Frontend Engineer, Backend Engineer, Full Stack Developer, AI Engineer and MERN Developer</td></tr>
+          <tr><td>Work and compensation</td><td>Remote or Hybrid; minimum ₹12 LPA</td></tr>
+          <tr><td>Search window</td><td>13 October–12 November 2026; planned availability 12 November. Editable in Settings.</td></tr>
+          <tr><td>Identity</td><td>Application contact details come from the approved resumes. Select the tracker owner's Google account even if Chrome defaults to a different account.</td></tr>
+        </tbody></table></div>
+        <p><strong>Pending activation:</strong> extension installation is unconfirmed; run a non-submitting form pilot and then a real portal pilot. Review the new FRONTEND and AI PDFs before employer uploads. The optional Sheets sidebar has not been installed.</p>
+      </section>
 
-    <div class="layout">
-      <nav class="toc" aria-label="Document sections">
-        <strong>Contents</strong>
-        <a href="#summary">01 · Outcome and scope</a>
-        <a href="#architecture">02 · System design</a>
-        <a href="#tracker">03 · Google Sheets tracker</a>
-        <a href="#assistant">04 · Application assistant</a>
-        <a href="#formfill">05 · Chrome form helper</a>
-        <a href="#workflow">06 · Daily workflow</a>
-        <a href="#delivery">07 · Delivery sequence</a>
-        <a href="#acceptance">08 · Acceptance checks</a>
-        <a href="#decisions">09 · Decisions and risks</a>
-        <a href="#sources">10 · References</a>
-      </nav>
+      <section id="architecture">
+        <p class="section-label">02 / Architecture</p><h2>Current implementation to migrate</h2>
+        <div class="flow"><b>Save role</b><i>→</i><b>Prepare + approve</b><i>→</i><b>Export Chrome bundle</b><i>→</i><b>Review + fill</b><i>→</i><b>Submit yourself</b><i>→</i><b>Update + sync</b></div>
+        <div class="table-wrap"><table><thead><tr><th>Component</th><th>Technology and responsibility</th></tr></thead><tbody>
+          <tr><td>Web workspace</td><td>React 19, TypeScript, Vite, custom CSS and Lucide. Dashboard, Applications, Prepare, Profile &amp; resumes, Settings.</td></tr>
+          <tr><td>Local API</td><td>Node.js / Express with Zod validation. Serves the built app and private endpoints on loopback port 4318; development Vite port 5173 proxies the API.</td></tr>
+          <tr><td>Workspace storage</td><td>Atomic JSON writes to <code>private/workspace.json</code>. Profile, preferences, applications and packs persist locally; PDFs live in <code>private/resumes/</code>.</td></tr>
+          <tr><td>Google integration</td><td>Desktop OAuth with PKCE, verified single-owner sign-in and direct Sheets API sync. Optional bound Apps Script sidebar.</td></tr>
+          <tr><td>Generation</td><td>Installed, signed-in Codex CLI. Structured output is checked for fact references, character limits, versions and approvals.</td></tr>
+          <tr><td>Browser helper</td><td>Chrome Manifest V3 side panel. Receives an exported JSON bundle; no direct backend or Google-account connection.</td></tr>
+        </tbody></table></div>
+        <p>The API owns persistence, Google tokens and generation. Google Sheets contains shared tracker rows and checked profile rows. Full answer text and search preferences stay in the local workspace; the Sheet stores the answer-pack ID. Pending local edits become synced only after successful synchronization.</p>
+        <p class="small">Source map: <code>app/client</code>, <code>app/server</code>, <code>app/shared</code>, <code>assistant</code>, <code>apps-script</code>, <code>extension</code>. See the <a href="app-contract.md">API contract</a> for payloads and routes.</p>
+      </section>
 
-      <main>
-        <section id="implementation-status">
-          <div class="eyebrow" style="color:var(--teal)">Implementation update · 13 October 2026</div>
-          <h2>The workspace is built</h2>
-          <p>ApplyWeave now includes a local React web app at <a href="http://127.0.0.1:4318">127.0.0.1:4318</a>, a TypeScript/Express backend, direct Google Sheets sync, signed-in Codex answer generation, and a persistent Chrome side panel. Start it with <code>Start ApplyWeave.command</code>. See <a href="../README.md">README</a> for setup and daily use.</p>
-          <ul>
-            <li><strong>Tracker:</strong> four live private Sheet tabs; local dashboard, queue, searchable applications, edits, backups, conflict review, and optional Apps Script installer.</li>
-            <li><strong>Assistant:</strong> approved profile, six resume versions including frontend and applied AI, job-fit assessment, referenced facts, editable answers, character limits, and explicit approvals.</li>
-            <li><strong>Form helper:</strong> import one application bundle, allow an exact portal hostname, scan/preview/fill selected empty text fields, and show unsupported fields for manual entry.</li>
-          </ul>
-          <div class="callout"><strong>Activation still required</strong>Google sign-in now gates the app and its private API. The client is configured, Google Sheets API is enabled, and a live tracker sync succeeded. Refresh the app and sign in with the owner account. Load <code>extension/dist</code> manually in Chrome. Then pilot a real company form and actual job descriptions. These account/browser steps have not been represented as completed. The optional Sheet sidebar needs separate authorization.</div>
-          <p>The app runs locally and stores personal data in the ignored <code>private/</code> folder. Unsynced work is labelled pending. The approved profile can be pulled from the Sheet; local profile changes use an explicit export/import workflow. Answer text remains local while its ID is tracked in Sheets. The original design and acceptance criteria below remain the reference for real-use validation.</p>
-        </section>
+      <section id="setup">
+        <p class="section-label">03 / Setup and sign-in</p><h2>Run the current local version</h2>
+        <p class="intro">These instructions apply to the existing implementation. The hosted release uses a public HTTPS URL, Google Web OAuth and managed storage as specified in section 9.</p>
+        <h3>1. Start locally</h3>
+        <p>Use Node.js 20.19+ or 22+ as recommended by this project. From the repository directory:</p>
+        <pre><code>npm ci
+npm run build
+npm start</code></pre>
+        <p>Open <a href="http://127.0.0.1:4318">http://127.0.0.1:4318</a> in Chrome and keep the terminal running. On this Mac, <code>Start ApplyWeave.command</code> is also available. For development use <code>npm run dev</code>.</p>
+        <h3>2. Configure Google once on a fresh installation</h3>
+        <ol>
+          <li>Select a Google Cloud project and enable <strong>Google Sheets API</strong>. Configure OAuth consent and add your owner account as a test user if the application is External / Testing.</li>
+          <li>Create a <strong>Desktop app</strong> OAuth client and download its JSON. This is the client type for the current local app.</li>
+          <li>Run the local bootstrap command below with your downloaded file and private tracker ID. Do not commit credentials.</li>
+        </ol>
+        <pre><code>npm run configure-google -- /path/to/desktop-client.json YOUR_SPREADSHEET_ID</code></pre>
+        <p><strong>This computer is already configured.</strong> Sheets API is enabled and live sync has succeeded. The Google Sheet does not need public edit access; the signed-in owner must have edit access. Signing into Chrome or connecting Google Drive to Codex does not authorize ApplyWeave itself.</p>
+        <h3>3. Sign in and sync</h3>
+        <p>Click <strong>Sign in with Google</strong>, choose the tracker owner and complete consent. The backend verifies the Google identity, checks the approved profile email when establishing ownership, and pins the verified account ID. Other accounts cannot open this workspace. Click <strong>Sync Google Sheets</strong> and inspect the result.</p>
+        <p>The local callback is <code>http://127.0.0.1:4318/api/auth/google/callback</code>. Scopes are <code>openid</code>, <code>email</code> and <code>spreadsheets</code>. The Sheets grant covers spreadsheets accessible to the account; this app targets the configured tracker.</p>
+        <div class="callout"><strong>Session and Google grant are separate</strong>An HttpOnly, SameSite=Lax browser session lasts up to seven days and ends when the server restarts. Sign out clears the session and private UI while retaining the Sheets grant. Disconnect Google removes the stored token. A revoked or expired grant requires reconnection.</div>
+        <p>A fresh clone has no private profile or PDFs. After sign-in, import your approved profile or restore your private workspace backup, and copy catalogued PDFs into the private resume directory.</p>
+      </section>
 
-        <section id="summary">
-          <p class="section-label">01 / Outcome and scope</p>
-          <h2>What this system should accomplish</h2>
-          <p class="intro">A useful first release should make every application easy to record, every follow-up visible, and repeated application questions quick to answer. You will find roles yourself on LinkedIn, Wellfound, and company career portals. The system begins when you choose a role.</p>
-          <div class="grid three">
-            <div class="card"><span class="number">1</span><h3>Application tracker</h3><p>One Google Sheet is the source of truth for roles, stages, next actions, follow-ups, and resume versions.</p></div>
-            <div class="card"><span class="number">2</span><h3>Application assistant</h3><p>Codex uses verified career facts and a pasted job description to recommend a resume and prepare truthful, tailored answers.</p></div>
-            <div class="card"><span class="number">3</span><h3>Chrome form helper</h3><p>A click-to-fill helper handles recurring fields on supported company portals, shows a review, and leaves final submission to you.</p></div>
-          </div>
-          <div class="callout"><strong>Known inputs</strong>Target roles: Software Development Engineer, Frontend Engineer, Backend Engineer, Full Stack Developer, AI Engineer, and MERN Developer. Planned final working day: <strong>11 November 2026</strong>. Planned availability: <strong>12 November 2026</strong>, unless an earlier release is confirmed.</div>
-          <p class="small">The first release focuses on application preparation and tracking. Job discovery remains a manual choice, so this plan does not depend on scraping or a job-board feed.</p>
-        </section>
+      <section id="tracker">
+        <p class="section-label">04 / Google Sheets tracker</p><h2>Track work and outcomes</h2>
+        <div class="table-wrap"><table><thead><tr><th>Tab</th><th>Purpose</th></tr></thead><tbody>
+          <tr><td>Applications</td><td>One stable Application ID per role; status, dates, resume, next action, notes and duplicate warning.</td></tr>
+          <tr><td>Today</td><td>Saved/Preparing work without a due date, actions due within the next seven days, and upcoming interviews.</td></tr>
+          <tr><td>Profile &amp; Answers</td><td>Explicitly checked profile facts/contact fields and resume catalogue used by the import workflow.</td></tr>
+          <tr><td>Dashboard</td><td>Application stage counts and search progress.</td></tr>
+        </tbody></table></div>
+        <h3>Application columns, A–W</h3>
+        <p>Application ID; Company; Job Title; Role Family; Source; Job URL; Location; Work Mode; Compensation (LPA); Date Saved; Date Applied; Status; Resume Version; Answer Pack ID; Next Action; Due Date; Last Updated; Recruiter / Contact; Response Date; Interview Date; Outcome / Reason; Notes; Duplicate Check.</p>
+        <p><strong>Statuses:</strong> Saved, Preparing, Applied, Assessment, Interview, Offer, Rejected, Withdrawn. Record actual submission dates and submitted resume versions. Unknown dates remain unknown; later draft recommendations do not replace a submitted resume choice. Use Withdrawn to retain history.</p>
+        <h3>Synchronization rules</h3>
+        <ul>
+          <li>Stable <code>AW-...</code> IDs connect the app, Sheet, pack and Chrome bundle. Do not edit IDs or formula cells casually.</li>
+          <li>Read-before-write checks detect simultaneous edits and duplicate IDs. Review conflicts and deliberately select the correct version.</li>
+          <li>Application changes stay visibly pending until sync succeeds. Writes use plain values so pasted job text does not become a formula.</li>
+          <li>Checked profile rows can be pulled from Sheets. Concurrent profile edits trigger a conflict; local profile edits require explicit reviewed export/import to publish to the Sheet.</li>
+          <li>Answer-pack text stays local. The Sheet alone is not a complete backup of the workspace.</li>
+        </ul>
+        <h3>Optional bound sidebar</h3>
+        <p>The tracker works without this. The Apps Script source and installer are implemented, but installation/live validation are pending. Enable Apps Script API and API access in Apps Script settings, then use <strong>Authorize sidebar installation</strong> and <strong>Install Sheet sidebar</strong> in app Settings. Authorization adds <code>script.projects</code>; script menu actions may request current-spreadsheet and container-UI permissions.</p>
+        <p>Manual setup: open the Sheet's Extensions → Apps Script, copy <code>apps-script/Code.gs</code> and <code>apps-script/Sidebar.html</code> (HTML file named Sidebar), run <code>setupApplyWeave</code> and reload. Existing matching tabs are preserved; mismatched headers are refused. The editor link previously returned a Google “Page not found” error; the API installer provides another route.</p>
+      </section>
 
-        <section id="architecture">
-          <p class="section-label">02 / System design</p>
-          <h2>One pipeline, three connected modules</h2>
-          <div class="flow" aria-label="System flow"><b>Choose job</b><i>→</i><b>Paste job description</b><i>→</i><b>Prepare answer pack</b><i>→</i><b>Review / apply</b><i>→</i><b>Update Sheet</b><i>→</i><b>Follow up</b></div>
-          <div class="callout"><strong>Integration goal</strong>Each role has one Application ID. The assistant uses that ID to prepare a resume recommendation and answer pack; the Chrome helper uses the approved pack to fill supported company forms; the Sheet records the actual submission and next action. These are modules of one workflow, not three independent products.</div>
-          <div class="table-wrap"><table><thead><tr><th>Layer</th><th>Owns</th><th>Implementation</th></tr></thead><tbody>
-            <tr><td>Google Sheet</td><td>Application records, next actions, verified profile facts, answer templates, resume catalogue</td><td>Tabs, validation, formulas, conditional formatting, and a small bound Apps Script menu/sidebar</td></tr>
-            <tr><td>Codex workflow</td><td>Job-description analysis, resume selection, answer drafts, evidence and missing-information flags</td><td>A reusable instruction template plus a structured candidate profile derived from the four resumes</td></tr>
-            <tr><td>Chrome helper</td><td>User-invoked field detection, preview, and filling on approved company application pages</td><td>Manifest V3 extension with temporary <code>activeTab</code> access and minimal permissions</td></tr>
-          </tbody></table></div>
-          <p><strong>First usable version:</strong> the Sheet, Codex workflow, and Chrome helper share the Application ID and exported profile/answer-pack files. You review and move approved answers between them. This avoids a hosted server or AI API key while we validate real applications. <strong>Integrated version:</strong> the Chrome side panel reads and writes the Sheet with authorized access and calls an AI service through a protected backend, eliminating the manual transfer. Codex can build that integration after the first version proves the data model and form mappings.</p>
-          <h3>Recommended technology stack</h3>
-          <div class="table-wrap"><table><thead><tr><th>Component</th><th>Technology</th><th>Why it fits</th></tr></thead><tbody>
-            <tr><td>Application data</td><td>Google Sheets</td><td>One editable record for applications, profile facts, answer packs, and review views.</td></tr>
-            <tr><td>Sheet controls</td><td>Google Apps Script (JavaScript)</td><td>Menus, validation, add/update forms, due-action view, and profile export inside the Sheet.</td></tr>
-            <tr><td>Browser interface</td><td>Chrome Manifest V3 extension; React + TypeScript side panel</td><td>One place to review answers, inspect form fields, and invoke filling on supported company portals.</td></tr>
-            <tr><td>First-release AI</td><td>Codex workflow with a versioned prompt and approved candidate profile</td><td>Lets us validate answer quality before adding a hosted AI service.</td></tr>
-            <tr><td>Integrated AI</td><td>Small Node.js + TypeScript API using the OpenAI Responses API</td><td>Generates answer packs from verified facts while keeping the API key on the server.</td></tr>
-            <tr><td>Integrated Sheet sync</td><td>Google OAuth 2.0 + Sheets API</td><td>Allows the Chrome interface to read and update the authorized Sheet directly.</td></tr>
-            <tr><td>Verification</td><td>Unit tests for mappings and data rules; browser tests on local sample forms</td><td>Checks answer grounding, duplicate handling, no-overwrite, and no-submit behavior.</td></tr>
-          </tbody></table></div>
-          <h3>Shared data contracts</h3>
-          <p>The Sheet assigns one stable <code>applicationId</code> per role. The approved profile export contains versioned <code>facts[]</code>, <code>resumeVersions[]</code>, and <code>standardAnswers[]</code>. Each job-specific answer pack contains <code>applicationId</code>, <code>resumeVersionId</code>, <code>answers[]</code>, and the IDs of the facts used to draft each answer. Version numbers let the assistant and extension warn when their imported copy is older than the Sheet.</p>
-          <div class="callout warning"><strong>Data boundary</strong>Resume facts and saved answers should contain only information you have verified. The extension should never store site passwords, session cookies, government IDs, or payment details. Sensitive self-identification questions stay for your own review.</div>
-        </section>
+      <section id="assistant">
+        <p class="section-label">05 / Application assistant</p><h2>Prepare answers from approved evidence</h2>
+        <p>Inputs are a saved application, pasted job description, questions and character limits, approved profile, preferences and resume catalogue. Outputs include fit/compensation/work-mode checks, unknowns, resume recommendation with reasons, referenced proof points and editable answer drafts.</p>
+        <div class="table-wrap"><table><thead><tr><th>Resume ID</th><th>Current role in the catalogue</th></tr></thead><tbody>
+          <tr><td>SDE</td><td>Original general software-engineering / DSA evidence.</td></tr>
+          <tr><td>MERN</td><td>Original JavaScript, MERN and full-stack evidence.</td></tr>
+          <tr><td>PYTHON</td><td>Original Python/backend evidence.</td></tr>
+          <tr><td>STARTUP</td><td>Original startup/product ownership evidence.</td></tr>
+          <tr><td>FRONTEND</td><td>Derived frontend PDF; created from approved facts, candidate review before upload.</td></tr>
+          <tr><td>AI</td><td>Derived applied-AI PDF; created from approved facts, candidate review before upload.</td></tr>
+        </tbody></table></div>
+        <p>The current profile has 17 approved facts and six resume versions. The user confirmed source employment dates, metrics, project descriptions and contact details. This permits reuse of those facts; it does not justify inventing missing qualifications, achievements or production AI experience.</p>
+        <ol>
+          <li>Generate a draft in Prepare using the installed, signed-in Codex CLI. Run <code>codex login</code> if needed, or set <code>CODEX_BIN</code> before starting the app for a custom installation.</li>
+          <li>Review job fit, unknowns and resume choice, then inspect each answer and its supporting facts. Generation uses Codex account limits; no separate API key is used by the current implementation.</li>
+          <li>Edit and explicitly approve accurate answers, respecting character limits. Every generated answer begins unapproved. Editing evidence or wording invalidates approval; changed profiles invalidate old pack exports.</li>
+          <li>Save the pack and export a Chrome bundle containing the approved profile plus that application's pack. Manual drafting remains available.</li>
+        </ol>
+        <p>Generation disables shell, browser, plugins and other tools, treats job descriptions as untrusted input, and validates structured results. Version checks reject stale in-flight results after application/profile/pack edits. Sensitive declarations and judgments stay manual.</p>
+        <p>PDF downloads are limited to files in the approved catalogue under <code>private/resumes/</code>. To add one, copy the PDF there and add its ID and plain filename to the profile catalogue. Real job-description trials remain a user-pilot step.</p>
+      </section>
 
-        <section id="tracker">
-          <p class="section-label">03 / Deliverable one</p>
-          <h2>Google Sheets application tracker</h2>
-          <p class="intro">The tracker should be usable before the assistant or extension exists. Enter a role in under a minute, then use a daily view to see what needs attention.</p>
-          <h3>Workbook structure</h3>
-          <div class="table-wrap"><table><thead><tr><th>Tab</th><th>Purpose</th><th>Key behavior</th></tr></thead><tbody>
-            <tr><td><strong>Applications</strong></td><td>Canonical row per company and role</td><td>Dropdown status and role family; filters; protected ID/formula columns; clickable job link</td></tr>
-            <tr><td><strong>Today</strong></td><td>Action queue</td><td>Shows due or overdue follow-ups, active interviews, and applications still being prepared</td></tr>
-            <tr><td><strong>Profile &amp; Answers</strong></td><td>Reusable verified facts and answer templates</td><td>Each fact has source, verification state, and last-reviewed date</td></tr>
-            <tr><td><strong>Dashboard</strong></td><td>Weekly review</td><td>Counts by stage, applications by week, interviews, and overdue actions</td></tr>
-          </tbody></table></div>
-          <h3>Applications data model</h3>
-          <div class="table-wrap"><table><thead><tr><th>Field group</th><th>Columns</th><th>Rules</th></tr></thead><tbody>
-            <tr><td>Identity</td><td>Application ID, company, title, role family, source, job URL, location</td><td>Generate an ID; warn on a duplicate URL or the same company + title</td></tr>
-            <tr><td>Progress</td><td>Date saved, date applied, status, last updated, next action, due date</td><td>Use fixed statuses and real dates; a due date belongs to an action, not to a status</td></tr>
-            <tr><td>Application record</td><td>Resume version, answer-pack link or ID, recruiter/contact, notes</td><td>Record which PDF and answers were actually submitted</td></tr>
-            <tr><td>Outcome</td><td>Response date, interview date, outcome/reason</td><td>Keep rejection and withdrawal distinct; do not overwrite prior applications</td></tr>
-          </tbody></table></div>
-          <p><strong>Status set:</strong> Saved → Preparing → Applied → Assessment → Interview → Offer, with Rejected and Withdrawn as terminal states. “Follow-up due” is a calculated view, not a separate status.</p>
-          <h3>Interaction and automation</h3>
-          <ul>
-            <li>A bound Apps Script menu opens a compact <strong>Add application</strong> form and an <strong>Update status</strong> form. Google documents menus, dialogs, and sidebars as supported Sheet extensions.</li>
-            <li>Apps Script functions handle <code>addApplication</code>, <code>updateApplication</code>, <code>getDueActions</code>, and <code>exportApprovedProfile</code>. The sidebar validates required fields before writing a row.</li>
-            <li>Conditional formatting highlights overdue actions and upcoming interviews. Data validation prevents accidental status spelling variants.</li>
-            <li>New applications can start with a suggested follow-up date; the date remains editable because different recruiters and stages need different timing.</li>
-            <li>Email-based status suggestions are a later enhancement. They require a separate decision about inbox access and should never silently mark a rejection or interview.</li>
-          </ul>
-          <p class="small">Success condition: a new application is recorded in less than one minute, and the Today tab reliably shows the next action for every active application.</p>
-        </section>
+      <section id="formfill">
+        <p class="section-label">06 / Chrome helper</p><h2>Review first, then fill selected fields</h2>
+        <pre><code>npm --prefix extension ci
+npm --prefix extension run build</code></pre>
+        <ol>
+          <li>Open <code>chrome://extensions</code> yourself, enable Developer mode and choose Load unpacked → <code>extension/dist</code>. Automated access to that Chrome page is blocked in this environment.</li>
+          <li>Pin ApplyWeave and open its persistent side panel on a company application page.</li>
+          <li>Import the reviewed Chrome bundle. Enable the exact company hostname you want to use.</li>
+          <li>Scan, review the proposed values, select fields, and fill. Rescan after page or profile changes.</li>
+        </ol>
+        <p>Permissions are <code>activeTab</code>, <code>scripting</code>, <code>storage</code> and <code>sidePanel</code>; there is no blanket website host permission. Supported fields include approved contact/education details and exact matches to approved application answers, subject to type and value checks.</p>
+        <div class="callout warning"><strong>Manual actions remain part of the workflow</strong>The helper never overwrites existing values or clicks Submit. LinkedIn and Wellfound are blocked for on-page interaction; use prepared copy/paste there. Salary, sponsorship, legal declarations, self-identification, CAPTCHA, file uploads and unsupported/custom controls require you. Dropdowns, iframes and shadow DOM may need manual entry.</div>
+        <h3>Safe installation pilot</h3>
+        <p>Serve the included non-submitting fixture from the repository root:</p>
+        <pre><code>python3 -m http.server 4320 --bind 127.0.0.1 --directory extension</code></pre>
+        <p>Open <a href="http://127.0.0.1:4320/test-form.html">127.0.0.1:4320/test-form.html</a> in Chrome and explicitly enable that hostname. Check scan, preview, selected filling, manual-field explanations and preservation of existing values with sample data. Then pilot a chosen company portal. Build completion does not confirm Chrome installation or compatibility with every portal.</p>
+      </section>
 
-        <section id="assistant">
-          <p class="section-label">04 / Deliverable two</p>
-          <h2>Resume-grounded application assistant</h2>
-          <p class="intro">The assistant turns your existing resumes into a verified fact bank, then drafts an answer pack for a job description you paste. It should make a suggestion and show the evidence behind it; your review decides what is sent.</p>
-          <h3>Candidate profile and resume catalogue</h3>
-          <div class="table-wrap"><table><thead><tr><th>Role family</th><th>Starting variant</th><th>Evidence to lead with</th></tr></thead><tbody>
-            <tr><td>General SDE / backend</td><td>SDE; Python variant where FastAPI is central</td><td>Enterprise privacy module, backend services, access controls, Java/Spring Boot or FastAPI, DSA</td></tr>
-            <tr><td>MERN / full stack</td><td>MERN</td><td>React + Node/Express + MongoDB, Jira plugin, PayPocket, end-to-end product delivery</td></tr>
-            <tr><td>Frontend</td><td>MERN initially; create a dedicated frontend variant</td><td>React UI, task/calendar workflows, responsive interfaces, AI chat frontend</td></tr>
-            <tr><td>Applied AI Engineer</td><td>SDE or startup variant initially; create a dedicated applied-AI variant</td><td>TechMateAI, RAG, LangChain, ChromaDB, PingAI and streaming AI chat</td></tr>
-            <tr><td>Startup full stack</td><td>Startup variant</td><td>Ownership, fast MVP delivery, cross-stack implementation, customer-facing product work</td></tr>
-          </tbody></table></div>
-          <p>The common DSA proof point is 1100+ LeetCode problems, a 1712 maximum rating, and contest rank 1855, as stated in the provided resumes. The profile must record these as resume claims to verify, not as automatically refreshed statistics.</p>
-          <h3>Fact record format</h3>
-          <p>Each reusable claim should store <code>fact ID</code>, <code>claim</code>, <code>source resume / experience</code>, <code>verified?</code>, <code>approved wording</code>, and <code>last reviewed</code>. Contact details, work authorization, salary expectations, and availability are separate fields. The UPAAV date stays “Present” until the actual end date; future applications can state the planned 12 November availability.</p>
-          <h3>Per-job input and output</h3>
-          <div class="grid">
-            <div class="card"><h4>Input you provide</h4><p>Job title, company, portal, URL, pasted job description, location, and any application questions. Pasting avoids a dependency on reading job-board pages.</p></div>
-            <div class="card"><h4>Output you review</h4><p>Recommended resume, 3–5 matching proof points, a concise role pitch, draft answers within requested character limits, and a list of unknown or unsupported items.</p></div>
-          </div>
-          <h3>Generation rules</h3>
-          <ol>
-            <li>Choose the resume by role evidence, not by title alone; ask for a new tailored version when the existing four are weak fits.</li>
-            <li>Use only verified profile facts. Keep the source fact beside each proposed answer during review.</li>
-            <li>Preserve exact company names, employment dates, technologies, and metrics. Never invent years of experience or production ownership.</li>
-            <li>Mark custom questions that need your judgment: salary, relocation, sponsorship, start date exceptions, demographic information, or personal motivation.</li>
-            <li>Save the approved answer pack under the Application ID so the tracker records what you sent.</li>
-          </ol>
-          <p><strong>Files to implement:</strong> a human-readable candidate profile, a reusable Codex instruction template, and a structured answer-pack template. The first build should also create two focused resume variants for frontend and applied-AI roles after the underlying claims are verified.</p>
-          <p class="small">Success condition: an answer pack is useful without factual corrections in a pilot set of five real job descriptions, with any unknown clearly marked.</p>
-        </section>
+      <section id="workflow">
+        <p class="section-label">07 / Daily workflow</p><h2>The happy path</h2>
+        <p>Hosted target: open your deployed HTTPS URL and sign in; no local terminal is needed. The steps below already describe the feature workflow, with local startup required only until migration is complete.</p>
+        <ol>
+          <li><strong>Start and sign in.</strong> Open ApplyWeave and review the Dashboard's next actions.</li>
+          <li><strong>Find a role.</strong> Browse LinkedIn, Wellfound or company sites yourself. Save URL, title, work mode, known compensation and job description with Add application.</li>
+          <li><strong>Prepare.</strong> Open the saved role in Prepare, enter questions/limits, generate, inspect evidence, edit and approve. Download the appropriate resume after reviewing it.</li>
+          <li><strong>Transfer.</strong> Save the pack, download Chrome bundle and import it in the side panel.</li>
+          <li><strong>Apply.</strong> On an approved company portal, scan and preview, fill selected supported fields, complete manual fields, upload the PDF and review the entire form. Submit yourself. For LinkedIn/Wellfound, copy/paste manually.</li>
+          <li><strong>Record the outcome.</strong> Mark Applied only after submission; record actual date/resume, recruiter details, next action and due date.</li>
+          <li><strong>Sync and follow up.</strong> Sync Google Sheets, resolve conflicts if any, and confirm success. Update assessment/interview/outcome stages as they happen.</li>
+        </ol>
+        <p>The time savings come from reusing verified facts, drafting answers in one place, reducing repeated typing and keeping a single status history. Google sync is explicit; neither a local save nor filling a form proves an employer received an application.</p>
+      </section>
 
-        <section id="formfill">
-          <p class="section-label">05 / Deliverable three</p>
-          <h2>User-invoked Chrome form helper</h2>
-          <p class="intro">The helper targets repetitive form entry on company career portals. It should be small and predictable: identify supported fields, propose values, show a preview, fill after a click, and stop before submission.</p>
-          <div class="flow" aria-label="Form helper flow"><b>Open company form</b><i>→</i><b>Click extension</b><i>→</i><b>Preview matches</b><i>→</i><b>Fill selected fields</b><i>→</i><b>Inspect form</b><i>→</i><b>You submit</b></div>
-          <h3>Release-one fields</h3>
-          <div class="table-wrap"><table><thead><tr><th>Fill automatically after review</th><th>Prompt for manual action</th></tr></thead><tbody>
-            <tr><td>Name, email, phone, location, LinkedIn/GitHub/portfolio links, education, planned availability</td><td>Resume file upload, CAPTCHA, login, employer-specific legal declarations</td></tr>
-            <tr><td>Selected approved answers from the current job's answer pack</td><td>Salary, sponsorship, demographic or disability questions, and any answer lacking a verified fact</td></tr>
-          </tbody></table></div>
-          <h3>Technical design</h3>
-          <ul>
-            <li>Use a Manifest V3 extension with <code>activeTab</code>, <code>scripting</code>, and local storage. Access begins only when you click the helper on the current tab. Avoid blanket access to every site.</li>
-            <li>Keep a domain allowlist for tested company portals. Disable page interaction on LinkedIn and Wellfound; use the answer pack for manual review and paste there.</li>
-            <li>Use field labels, names, and nearby text to map inputs; never infer from position alone. Show a field-by-field preview with confidence and an “unmatched” list.</li>
-            <li>Do not overwrite a non-empty field without an explicit choice. Never click Apply, Submit, Send, or any equivalent final action.</li>
-            <li>Import a small approved profile export from the Sheet for the first release. A later release can use Google OAuth and the Sheets API for direct synchronization if manual import proves burdensome.</li>
-            <li>Support one or two recurring company portal form patterns first; expand only after real examples and site-specific review.</li>
-          </ul>
-          <p><strong>Extension modules:</strong> <code>manifest.json</code> for permissions, a popup or side panel for preview, a field mapper for common inputs, a content script for filling selected values, local profile storage, and a domain policy that blocks unsupported sites. Test the mapper against a local sample form before trying a live portal.</p>
-          <div class="callout warning"><strong>Platform boundary</strong>LinkedIn states that third-party extensions that scrape, modify, or automate activity on its site are prohibited. Wellfound restricts automated collection and high-load automated access. For these platforms, use native features plus prepared answers outside the page. Review each company portal's terms before enabling the helper there.</div>
-          <p class="small">Success condition: on a supported test form, the helper fills common fields accurately, flags uncertain fields, leaves existing entries intact, and cannot submit the application.</p>
-        </section>
+      <section id="operations">
+        <p class="section-label">08 / Recovery and troubleshooting</p><h2>Keep your work recoverable</h2>
+        <p class="intro">This section records current local recovery. The hosted release must provide equivalent JSON/PDF export, restore and provider-pause recovery through the deployment plan.</p>
+        <p>Export a workspace JSON backup from Settings before major edits or moving computers. It includes profile, preferences, applications and packs. It excludes PDF binaries, OAuth credentials/tokens and browser sessions. Back up <code>private/resumes/</code> separately with catalogue filenames intact.</p>
+        <p>For recovery: install dependencies, configure Desktop OAuth and tracker ID, sign in, restore the JSON through Settings, copy PDFs back and inspect records before syncing. Restore replaces workspace contents and marks applications pending; back up the destination first. Reinstall the extension and import a fresh bundle.</p>
+        <p>Private files and credentials are Git-ignored with restricted local access; this is not an encrypted vault. Exported bundles/backups also contain personal information. Private APIs require a session and mutating requests have CSRF/origin checks. The loopback HTTP cookie intentionally differs from the Secure cookie required for a hosted HTTPS deployment.</p>
+        <div class="table-wrap"><table><thead><tr><th>Problem</th><th>Action</th></tr></thead><tbody>
+          <tr><td>App unavailable</td><td>Start the server; keep the terminal open and use the exact 127.0.0.1 URL.</td></tr>
+          <tr><td>Signed out after restart</td><td>Sign in again. Sessions are in memory; workspace data persists.</td></tr>
+          <tr><td>Wrong account</td><td>Select the pinned workspace owner, regardless of Chrome's default Google account.</td></tr>
+          <tr><td>Sheets API disabled / previous 403</td><td>Use Enable Sheets API in the app's error, enable it in the OAuth client's Cloud project, wait briefly and retry Sync. Google login does not enable APIs. The original issue on this computer was resolved.</td></tr>
+          <tr><td>Sheet access denied</td><td>Check tracker ID and owner edit access. Public sharing is unnecessary.</td></tr>
+          <tr><td>Expired grant</td><td>Reconnect Google; consent/test-mode grant expiry is separate from session expiry.</td></tr>
+          <tr><td>Sync conflict</td><td>Compare versions and deliberately resolve it; do not assume pending work reached the Sheet.</td></tr>
+          <tr><td>Generation unavailable</td><td>Check Codex installation, sign-in and CODEX_BIN; use manual drafts meanwhile.</td></tr>
+          <tr><td>Stale bundle / skipped fields</td><td>Review updated facts and answers, export a fresh bundle, enable the correct host and rescan. Enter unsupported fields manually.</td></tr>
+          <tr><td>Automated Chrome redirect blocked</td><td>Open the normal local URL manually and verify sign-in there. This environment has produced ERR_BLOCKED_BY_CLIENT for automated loopback navigation.</td></tr>
+        </tbody></table></div>
+      </section>
 
-        <section id="workflow">
-          <p class="section-label">06 / Everyday use</p>
-          <h2>The application loop</h2>
-          <ol>
-            <li><strong>Find and choose:</strong> browse LinkedIn, Wellfound, or a company careers page yourself. Save the URL and paste the description into the assistant.</li>
-            <li><strong>Prepare:</strong> review the recommended resume and answer pack. Resolve unknowns and select the PDF you will upload.</li>
-            <li><strong>Apply:</strong> use native browser or platform autofill where available. On supported company portals, invoke the Chrome helper for common fields and inspect the completed form before submitting.</li>
-            <li><strong>Record:</strong> add or update the row in Google Sheets with the actual submission date, resume version, status, and next action.</li>
-            <li><strong>Review daily:</strong> open Today for follow-ups, assessments, and interviews. Review Dashboard once a week to see which role families produce replies.</li>
-          </ol>
-          <p>For a role that redirects from LinkedIn or Wellfound to a company portal, record the original source in the Sheet and use the company portal's final application URL as the job link. One Application ID follows the role through every stage.</p>
-        </section>
+      <section id="deployment">
+        <p class="section-label">09 / Required hosted release</p><h2>Deploy using free service tiers</h2>
+        <div class="callout"><strong>New delivery requirement</strong>Deliver a single-owner HTTPS application that works with this Mac switched off. Preserve all three features: Google Sheets tracking, reviewed answer generation and the separately installed Chrome helper. Use free hosting/data tiers within their allowances, with no automatic paid upgrade. This section defines the target release. The code now includes cloud adapters and deployment configuration; production activation and live acceptance remain pending.</div>
+        <h3>Recommended target: Vercel Hobby + Supabase Free</h3>
+        <p>Keep React, TypeScript, Vite and the Express business logic. Host the web UI and API on Vercel; use Supabase Postgres for persistent data and a private Supabase Storage bucket for resumes. Continue using Google Sheets as the shared tracker. The application keeps its own Google sign-in/session flow; Supabase is the data/storage provider, so introducing a second authentication system is unnecessary.</p>
+        <div class="flow"><b>Chrome / hosted React UI</b><i>↔</i><b>HTTPS Express API</b><i>↔</i><b>Postgres + private PDFs</b></div>
+        <p class="small" style="margin-top:12px">The API also calls Google OAuth, Google Sheets and the selected hosted AI API. Reviewed application bundles continue to move from the web app to the Chrome side panel by explicit file import.</p>
+        <h3>Platform choice and free-tier limits</h3>
+        <p class="small">Official provider information checked 13 October 2026. Recheck before deployment; quotas and terms can change. These are free tiers, not an unlimited availability promise.</p>
+        <div class="table-wrap"><table><thead><tr><th>Option</th><th>Fit for ApplyWeave</th><th>Constraint</th></tr></thead><tbody>
+          <tr><td><strong>Vercel Hobby + Supabase Free</strong><br>Recommended</td><td>Hosted React and Express API, persistent Postgres and private PDF storage. Reuses the existing stack.</td><td>Vercel Hobby is for personal, non-commercial use and has usage limits; reassess eligibility if this becomes a product. <a href="https://vercel.com/docs/plans/hobby">Hobby terms and limits</a>.</td></tr>
+          <tr><td><strong>Render Free + Supabase Free</strong><br>Alternative</td><td>One Node/Express web service can serve the UI and API, using the same external database/storage adapters.</td><td>Free services sleep after 15 minutes idle; wake-up can take about a minute. Filesystem changes are lost on restart/redeploy. Do not use Render's free Postgres for durable records: it expires after 30 days. <a href="https://render.com/docs/free">Render free-service limits</a>.</td></tr>
+        </tbody></table></div>
+        <p>Supabase Free currently includes 500 MB database storage and 1 GB file storage, with limited egress; projects pause after a week of inactivity. This is a plausible starting allowance for one job search, subject to measuring actual usage. Keep independent backups and a pause/recovery runbook. <a href="https://supabase.com/pricing">Supabase pricing and quotas</a>.</p>
+        <p>The target hosting/storage bill is ₹0 while usage stays within free allowances. Start with a provider subdomain; a purchased custom domain is optional. Avoid paid add-ons and expiring trials as required dependencies. If a free limit is reached, show a useful error and preserve saved work; do not silently upgrade or drop records.</p>
 
-        <section id="delivery">
-          <p class="section-label">07 / Build order</p>
-          <h2>Deliver useful pieces in sequence</h2>
-          <div class="timeline">
-            <div class="phase"><div class="when">Phase 0<br>Profile audit</div><div><h3>Verify the fact bank</h3><p>Confirm employment dates, metrics, project claims, links, contact details, and planned availability. Identify the missing frontend and applied-AI resume variants. Output: approved candidate profile and resume catalogue.</p></div></div>
-            <div class="phase"><div class="when">Phase 1<br>Tracker MVP</div><div><h3>Make the Sheet usable immediately</h3><p>Create the four tabs, dropdowns, duplicate warnings, Today view, dashboard, and add/update menu. Enter a few existing applications to validate the workflow. Start logging live applications at this point.</p></div></div>
-            <div class="phase"><div class="when">Phase 2<br>Assistant MVP</div><div><h3>Prepare role-specific answers</h3><p>Write and test a repeatable Codex instruction template, fact matching, answer bank, resume recommendation, and answer-pack format using five real job descriptions.</p></div></div>
-            <div class="phase"><div class="when">Phase 3<br>Chrome helper</div><div><h3>Fill recurring company forms</h3><p>Implement a click-to-run extension on a local test form, then pilot one or two approved company portal patterns. Add preview, no-overwrite, no-submit, and domain-blocking checks.</p></div></div>
-            <div class="phase"><div class="when">Phase 4<br>Refine</div><div><h3>Improve from real use</h3><p>After about ten applications, inspect time spent, recurring questions, form mismatches, and missed follow-ups. Add only the automations that address measured friction.</p></div></div>
-          </div>
-        </section>
+        <h3>Implementation work by component</h3>
+        <div class="table-wrap"><table><thead><tr><th>Workstream</th><th>Required implementation and result</th></tr></thead><tbody>
+          <tr><td>API and deployment</td><td>Extract app construction from the local listener; add a supported Vercel Express entry point and static/API routing. Read host/origin settings from server configuration. Keep a normal PORT listener for Render/local use. Preserve validation and CSRF protection. <a href="https://vercel.com/docs/frameworks/backend/express">Express deployment reference</a>.</td></tr>
+          <tr><td>Persistent workspace</td><td>Introduce a storage interface and Postgres adapter. Migrate profile/facts, preferences, applications, answer packs, resume metadata and sync baselines. Preserve IDs and versions; use transactions, uniqueness constraints and optimistic concurrency checks. Never write production state to the deployment filesystem.</td></tr>
+          <tr><td>Sign-in and owner protection</td><td>Use a Google <strong>Web application</strong> OAuth client with the exact HTTPS callback. Persist OAuth state/PKCE and sessions, consume state once, and verify the existing owner. Configure the allowed owner before deployment; do not let the first arbitrary visitor claim the workspace. Retain immutable Google account-ID pinning, expiry and logout.</td></tr>
+          <tr><td>Tokens and secrets</td><td>Store refresh tokens encrypted, using a server-only key kept outside the database. Use Secure/HttpOnly/SameSite cookies, redacted logs and server-only configuration. No OAuth secrets, database credentials or AI keys in the Vite bundle. Reauthorize the Google grant for the new Web client.</td></tr>
+          <tr><td>Private resumes</td><td>Upload catalogued PDFs through an authenticated API into a private bucket, with type/size validation. Authorize every download or issue short-lived signed links. Match migrated files to resume IDs and hashes. Add a signed-in upload/catalogue UI so managing PDFs no longer requires local filesystem access.</td></tr>
+          <tr><td>Sheets synchronization</td><td>Reuse the current tracker and conflict rules. Persist synchronization baselines and use a workspace lease/lock across requests. Preserve plain-value writes, stable IDs and profile approval rules. Resolve local pending/conflicting edits before cutover, and stop the old local app from writing after migration.</td></tr>
+          <tr><td>Application assistant</td><td>Replace the hosted runtime's Codex subprocess with a provider adapter calling a hosted model API. Retain evidence references, character limits, approval rules, stale-result checks and reviewed bundle exports. Keep the CLI adapter only for local development.</td></tr>
+          <tr><td>Generation lifecycle</td><td>Persist job state, input version, idempotency key, attempts and result. Initially use one bounded provider request within the platform timeout, saving its result before completion. Detect stale running jobs and offer explicit retry; never depend on unawaited work surviving a response. Add a durable runner only if measured execution requires it and its free allowance is verified.</td></tr>
+          <tr><td>UI and extension</td><td>Replace local-path and terminal instructions with hosted connection/storage states. Show quota, reconnect, failed-generation and sync errors clearly. Keep bundle compatibility and manual approvals; the Chrome extension remains separately installed, with no auto-submit or LinkedIn/Wellfound filling.</td></tr>
+          <tr><td>Recovery</td><td>Retain portable JSON export and add a separate authenticated PDF export path. Supply schema migrations and a restore runbook. Back up data and PDFs outside the hosting account; do not equate a code rollback with a database restore.</td></tr>
+        </tbody></table></div>
+        <p>Database access will be server-owned: deny public/anonymous table and bucket access, scope every API operation to the configured owner/workspace, and enforce policies appropriate to the chosen database credentials. Use a serverless-compatible pooled database connection and bounded connection counts. The first release remains single-owner.</p>
 
-        <section id="acceptance">
-          <p class="section-label">08 / Acceptance checks</p>
-          <h2>What “ready to use” means</h2>
-          <ul class="checklist">
-            <li>Five sample applications can be entered, updated, filtered, and found again; duplicate detection catches a repeat URL.</li>
-            <li>Today shows an overdue follow-up, a due-today action, and an upcoming interview correctly.</li>
-            <li>The assistant recommends sensible resume variants for SDE, MERN, frontend, backend, and applied-AI sample roles.</li>
-            <li>Every drafted experience claim maps to an approved profile fact; unanswered questions remain visibly unanswered.</li>
-            <li>The Chrome helper fills known fields on a test form, does not overwrite existing values, and leaves uncertain fields for review.</li>
-            <li>The Chrome helper is inactive on LinkedIn and Wellfound and has no action that submits an application.</li>
-            <li>A completed application records the date, submitted resume, final status, and next action in the Sheet.</li>
-          </ul>
-        </section>
+        <h3>AI generation and cost decision</h3>
+        <p><strong>Free hosting does not supply the current Mac's Codex runtime.</strong> Full hosted generation needs a model API credential and a chosen model. Before selecting a free-quota API, check account/region availability, current limits and how it handles submitted resume/job data. Do not promise permanently free inference or transfer local Codex login files to the server.</p>
+        <ul>
+          <li>Use a provider adapter so the model service can change without changing packs or approval rules.</li>
+          <li>Set request size, output-token, concurrency and daily-generation limits. Do not switch to a billable model automatically.</li>
+          <li>Keep manual drafting, editing, approval and bundle export available when the provider is unconfigured, unavailable or quota-limited.</li>
+          <li>Manual mode is a fallback. The full hosted release is not complete until live AI generation passes with the chosen provider. If only paid inference is suitable, obtain the user's budget decision before enabling it.</li>
+        </ul>
 
-        <section id="decisions">
-          <p class="section-label">09 / Decisions and risks</p>
-          <h2>Resolve these during implementation</h2>
-          <div class="table-wrap"><table><thead><tr><th>Decision or risk</th><th>Current plan</th><th>Trigger to revisit</th></tr></thead><tbody>
-            <tr><td>Google account connection</td><td>Build inside your own Google Sheet using Apps Script; do not require a published add-on.</td><td>If the extension needs direct sheet synchronization, configure OAuth with the minimum Sheets permission.</td></tr>
-            <tr><td>AI operating cost</td><td>Use the existing Codex conversation and a reusable prompt for the initial assistant.</td><td>Consider an API-backed side panel only after the manual handoff becomes a real bottleneck.</td></tr>
-            <tr><td>Resume truth</td><td>Verify dates, metrics, technical claims, and links before adding them to the reusable profile.</td><td>Any source conflict or new experience requires a profile review.</td></tr>
-            <tr><td>Portal variation</td><td>Support a small number of tested company form patterns with preview and manual fallback.</td><td>Expand when repeated portals justify a specific adapter.</td></tr>
-            <tr><td>Application confirmation</td><td>You confirm submission and update the Sheet; a prefilled tracker action can make this quick.</td><td>Consider email-assisted status suggestions after choosing an inbox provider and access scope.</td></tr>
-            <tr><td>Personal data</td><td>Keep the Sheet private, use narrow extension permissions, and store no passwords or government IDs.</td><td>Review permissions whenever adding direct sync or an external AI endpoint.</td></tr>
-          </tbody></table></div>
-          <p class="small">The separate outreach-email project already in the workspace has a different purpose. Integration can be considered later if contact outreach becomes part of this application workflow.</p>
-        </section>
+        <h3>Configuration and account setup</h3>
+        <p>The following names are a <strong>proposed configuration contract</strong> implemented in <code>.env.example</code>; populate private values using the <a href="hosted-deployment.md">deployment runbook</a>.</p>
+        <div class="table-wrap"><table><thead><tr><th>Configuration</th><th>Use</th></tr></thead><tbody>
+          <tr><td><code>APP_ORIGIN</code>, <code>GOOGLE_REDIRECT_URI</code></td><td>Stable deployed HTTPS URL and exact <code>/api/auth/google/callback</code> URL. Explicitly allow development/preview origins only where needed.</td></tr>
+          <tr><td><code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code>, <code>GOOGLE_SPREADSHEET_ID</code>, <code>OWNER_EMAIL</code></td><td>Web OAuth client, existing private tracker and preconfigured owner. Verify/pin the account ID on authorized migration.</td></tr>
+          <tr><td><code>DATABASE_URL</code>, <code>SUPABASE_URL</code>, <code>SUPABASE_SERVICE_ROLE_KEY</code>, <code>SUPABASE_RESUME_BUCKET</code></td><td>Postgres and private object storage. Privileged credentials stay exclusively on the server.</td></tr>
+          <tr><td><code>TOKEN_ENCRYPTION_KEY</code></td><td>Encrypt stored provider grants; keep a protected recovery copy separate from data backups.</td></tr>
+          <tr><td><code>AI_PROVIDER</code>, <code>AI_MODEL</code>, <code>AI_API_KEY</code>, <code>AI_DAILY_LIMIT</code></td><td>Explicit generation provider, credential and app limit. No secrets use a <code>VITE_</code> prefix.</td></tr>
+        </tbody></table></div>
+        <p>Use separate preview/test data, tracker and credentials; preview URLs must never be wildcard OAuth callbacks. For the initial rollout use a stable preview origin or disable live OAuth on arbitrary previews. Retain the Desktop client for local use and add the Web client for hosting. Enable Sheets API in its project and follow <a href="https://developers.google.com/identity/protocols/oauth2/web-server">Google's web-server OAuth setup</a>.</p>
 
-        <section id="sources">
-          <p class="section-label">10 / References</p>
-          <h2>Source material and platform documentation</h2>
-          <ul>
-            <li>Provided resumes: <code>Harcharan_Resume_SDE_Sept_16__2026_.pdf</code>, <code>Harcharan_Resume_MERN__Sept_16__2026_.pdf</code>, <code>Harcharan_Resume_PD__Sept_16__2026_.pdf</code>, and <code>Harcharan_Resume_UPAAV___Startup_.pdf</code>. Their statements become reusable only after the profile audit.</li>
-            <li><a href="https://developers.google.com/apps-script/guides/sheets">Google Apps Script: Extend Google Sheets</a> — Sheet read/write, menus, dialogs, and sidebars.</li>
-            <li><a href="https://developer.chrome.com/docs/extensions/develop/concepts/activeTab">Chrome Extensions: activeTab permission</a> — temporary access after a user action.</li>
-            <li><a href="https://developer.chrome.com/docs/extensions/reference/api/sidePanel">Chrome Extensions: Side Panel API</a> — browser side panel interface.</li>
-            <li><a href="https://developers.openai.com/api/docs/guides/text">OpenAI API: Text generation</a> — Responses API for the later integrated assistant.</li>
-            <li><a href="https://developers.openai.com/api/reference/overview">OpenAI API overview</a> — keep API keys on the server.</li>
-            <li><a href="https://developers.google.com/workspace/sheets/api/scopes">Google Sheets API scopes</a> — OAuth authorization for later direct sync.</li>
-            <li><a href="https://www.linkedin.com/help/linkedin/answer/a1341387/prohibition-of-scraping-software">LinkedIn: Prohibited software and extensions</a> — automation boundary.</li>
-            <li><a href="https://wellfound.com/terms">Wellfound Talent General Terms</a> — automated access and content-use restrictions.</li>
-          </ul>
-          <p class="small">References checked for this plan on 12 October 2026. Recheck each target portal's current rules before implementing an on-page adapter.</p>
-        </section>
-      </main>
-    </div>
-    <footer class="foot">Job Search System · planning document · 12 October 2026</footer>
+        <h3>Delivery phases and exit criteria</h3>
+        <ol>
+          <li><strong>Hosting foundation.</strong> Add cloud/local adapters, migration scripts, configuration validation and a deployment entry point. Build and boot the UI/API on the free target with test data.</li>
+          <li><strong>Identity and durable data.</strong> Implement Web OAuth, owner-only access, persistent sessions, Postgres storage and private PDF upload/download. Verify data survives a cold start and redeploy.</li>
+          <li><strong>Feature parity.</strong> Connect hosted generation, Google Sheets synchronization and Chrome bundle exports. Exercise review/approval, duplicates, concurrent edits and expired grants.</li>
+          <li><strong>Isolated preview.</strong> Run the existing checks plus hosted access-control, restart, quota/error and backup/restore tests. Use an isolated tracker and sample profile.</li>
+          <li><strong>Migration and deployment.</strong> Pause local writes, export JSON/PDFs, resolve outstanding sync conflicts, import with unchanged IDs, compare counts/content, set the final callback and reauthorize. Make one controlled sync and inspect for duplicates before normal use.</li>
+          <li><strong>Real-use handover.</strong> Open the public HTTPS URL in a fresh browser while the local server is stopped. Complete save → generate → approve → export → Chrome review/fill → manual submit → status/sync. Verify resume download and a backup restore. Record the URL, limits and recovery instructions.</li>
+        </ol>
+        <p><strong>Rollback:</strong> retain the original private backup and PDFs, but avoid two active writers. If returning to the local app after hosted edits, first export/reconcile those edits and the Sheet, then reactivate the local workspace. Code rollbacks must remain compatible with deployed database migrations.</p>
+        <div class="callout warning"><strong>Required before execution</strong>Access to Vercel (or Render), a Supabase project, Google Web OAuth configuration, and the selected AI provider credential. Vercel + Supabase is the selected implementation target, and the user selected Gemini. Private credentials, Gemini data policy/budget confirmation, Google Web OAuth and live activation remain required. No resources, subscriptions or deployments are created by this document update.</div>
+      </section>
+
+      <section id="acceptance">
+        <p class="section-label">10 / Verification and next steps</p><h2>Evidence and remaining checks</h2>
+        <p>Recorded on 13 October 2026: <strong>41 tests passed</strong> (19 backend/generator/Google error handling, 9 Apps Script/portable assistant, 13 extension), TypeScript checks and both production builds passed. See the <a href="verification.md">verification record</a> for detailed evidence and limitations.</p>
+        <pre><code>npm ci
+npm --prefix extension ci
+npm run check</code></pre>
+        <div class="table-wrap"><table><thead><tr><th>Area</th><th>Verified</th><th>Pending</th></tr></thead><tbody>
+          <tr><td>Google</td><td>Owner sign-in, protected API, enabled Sheets API, live sync with zero conflicts.</td><td>Optional bound sidebar installation and live menu checks.</td></tr>
+          <tr><td>Assistant</td><td>Live Codex generation; isolated save/generate/review/export browser flow; evidence, approval and race checks.</td><td>Real job-description trials and candidate review of new PDFs.</td></tr>
+          <tr><td>Chrome</td><td>Built side panel; mapping, stale-page, no-overwrite and no-submit automated checks.</td><td>Confirmed manual installation, fixture scan/fill and actual portal pilot.</td></tr>
+          <tr><td>Tracker</td><td>Four live tabs, checked profile catalogue, queue/formulas, sync and conflict tests.</td><td>Continued validation with real applications and follow-ups.</td></tr>
+          <tr><td>Hosting</td><td>Free-tier options checked; Vercel + Supabase target and Render alternative documented.</td><td>Cloud adapters and PostgreSQL integration tests implemented. Private provider configuration, live migration/deployment and hosted acceptance remain pending.</td></tr>
+        </tbody></table></div>
+        <p>No employer application was submitted during verification and no test records were left in the live tracker. Mocked API tests provide repeatable coverage; they do not replace real portal or optional sidebar checks.</p>
+      </section>
+
+      <section id="sources">
+        <p class="section-label">11 / References</p><h2>Implementation and platform references</h2>
+        <ul>
+          <li><a href="../README.md">README: setup, daily use, recovery and development</a></li>
+          <li><a href="hosted-deployment.md">Hosted deployment runbook</a></li>
+          <li><a href="app-contract.md">Local API contract</a> and <a href="verification.md">verification record</a></li>
+          <li><a href="https://developers.google.com/identity/protocols/oauth2/native-app">Google installed-application OAuth</a> and <a href="https://developers.google.com/identity/protocols/oauth2/web-server">web-server OAuth</a></li>
+          <li><a href="https://developers.google.com/workspace/sheets/api/scopes">Google Sheets scopes</a></li>
+          <li><a href="https://developers.google.com/apps-script/api/how-tos/manage-projects">Apps Script project management</a> and <a href="https://script.google.com/home/usersettings">API access settings</a></li>
+          <li><a href="https://developer.chrome.com/docs/extensions/reference/api/sidePanel">Chrome side panel</a> and <a href="https://developer.chrome.com/docs/extensions/develop/concepts/activeTab">activeTab access</a></li>
+          <li><a href="https://vercel.com/docs/frameworks/backend/express">Express on Vercel</a> and <a href="https://vercel.com/docs/plans/hobby">Vercel Hobby terms/limits</a></li>
+          <li><a href="https://supabase.com/pricing">Supabase Free allowances</a> and <a href="https://render.com/docs/free">Render Free limits</a> (checked 13 October 2026)</li>
+        </ul>
+        <p class="small">This guide supersedes the original planning-only descriptions with the implemented local workflow and a required hosted release on free service tiers. Source resume facts were approved by the candidate. Credentials, token values and private resume content are intentionally absent from this document.</p>
+      </section>
+    </main>
   </div>
+  <footer class="foot">ApplyWeave · Updated 13 October 2026 · Free hosting target · current local implementation retained as migration reference</footer>
+</div>
 </body>
 </html>

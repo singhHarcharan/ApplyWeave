@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: applyweave
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      - key: APPLYWEAVE_MODE
+        value: hosted
+      - key: NODE_VERSION
+        value: 22
+      - key: APP_ORIGIN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_SPREADSHEET_ID
+        sync: false
+      - key: OWNER_EMAIL
+        sync: false
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: AI_PROVIDER
+        value: disabled
+      - key: AI_MODEL
+        sync: false
+      - key: AI_API_KEY
+        sync: false

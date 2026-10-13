@@ -82,7 +82,7 @@ test('local API persists applications, rejects duplicates, and enforces lifecycl
     assert.equal((await request(server,'GET','/api/state',undefined,{...headers,Host:'127.0.0.1:5173',Origin:'http://127.0.0.1:5173'})).status,200);
     const callback=await request(server,'GET','/api/auth/google/callback?code=x&state=x',undefined,{'Sec-Fetch-Site':'cross-site'});
     assert.equal(callback.status,303);assert.equal(callback.headers.location,'/?authError=OAUTH_STATE');
-    const disk=JSON.parse(await readFile(store.filename,'utf8'));
+    const disk=JSON.parse(await readFile(path.join(dir,'workspace.json'),'utf8'));
     assert.equal(disk.applications[0].applicationId,id);
     assert.equal(disk.applications[0].status,'Offer');
     assert.equal(disk.googleOAuthClient,undefined);

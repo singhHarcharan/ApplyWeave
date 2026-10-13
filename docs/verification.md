@@ -30,3 +30,14 @@ Chrome automation could not open the local app URL (`ERR_BLOCKED_BY_CLIENT`); re
 - Disabled Sheets API, denied Sheet access, missing tracker, rate limiting, and temporary failures now have distinct safe messages; raw upstream JSON is not displayed. The disabled-API message provides an official Google Cloud activation link and retry.
 - The Google Cloud console confirms Sheets API enabled. Existing tracker sync returned HTTP 200 and zero conflicts; the previous 403 banner cleared in Chrome.
 - Live Google sign-in succeeded for the approved owner and persisted the verified account ID. Chrome displayed the authenticated dashboard with account email and Sign out. Chrome blocked the automated redirect page; the user manually opened the normal app URL, where the session was valid.
+
+## Hosted implementation verification — 13 October 2026
+
+- Full check with disposable PostgreSQL integration enabled: **56 tests passed, zero failed, zero skipped** (34 backend/provider/storage/auth, 9 Apps Script/portable assistant, 13 extension). Both TypeScript checks and both builds passed.
+- Hosted storage tests verify concurrent transactions, rollback, restart persistence and private database policies.
+- Hosted API tests verify sessions across server instances, owner access, origin checks, persistent jobs, awaited provider execution, request replay, atomic job/pack commit and daily caps.
+- OAuth tests verify browser binding, encrypted state, replay rejection, immutable owner identity, serialized refresh and persistent session revocation.
+- Private resume storage tests verify MIME/magic/size checks, private buckets and refusal to overwrite differing PDFs.
+- Isolated browser QA verified the new resume upload form: a synthetic PDF was uploaded, the catalogue and profile version updated, and the success state rendered. The actual candidate profile/tracker was not used.
+- `scripts/migrate-hosted.ts` dry run validated the current local workspace and six PDFs; no live migration was performed.
+- Vercel and Render deployment configuration and a hosted runbook are provided. Supabase credentials, Google Web OAuth and live Gemini configuration/accepted data policy remain activation gates. Live deployment is not yet verified.
