@@ -4,7 +4,7 @@ One workspace for your job search: save a role, prepare grounded answers, review
 
 ## Current status — 13 October 2026
 
-**Deployed at https://applyweave.vercel.app on Vercel Hobby with Supabase Free.** Production secrets and Google Web OAuth are configured. The database schema, approved profile and six private PDFs have been migrated and verified. Hosted sign-in and Sheets sync still need the browser consent/acceptance check; automated browser sign-in currently reports a fetch error although the sign-in API passes. OpenAI (`gpt-5.4-mini`) is configured, but the API account returned insufficient credits. Codex/ChatGPT subscription billing does not fund API calls. See the [hosted deployment runbook](docs/hosted-deployment.md).
+**Deployed at https://applyweave.vercel.app on Vercel Hobby with Supabase Free.** Production secrets and Google Web OAuth are configured. The database schema, approved profile and six private PDFs have been migrated and verified. Hosted Google sign-in and Sheets synchronization are verified; the first hosted sync completed with zero conflicts. OpenAI (`gpt-5.4-mini`) is configured, but the API account returned insufficient credits. Codex/ChatGPT subscription billing does not fund API calls. See the [hosted deployment runbook](docs/hosted-deployment.md).
 
 The local version remains available. The Chrome extension is built; manual installation and a real company-portal pilot remain unconfirmed. The optional Sheets sidebar is not installed. Review the FRONTEND and AI resumes before employer uploads. No employer application has been submitted by this system.
 

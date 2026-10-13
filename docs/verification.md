@@ -48,5 +48,5 @@ Chrome automation could not open the local app URL (`ERR_BLOCKED_BY_CLIENT`); re
 - Google Web OAuth client created with the exact production callback; existing shared Google consent branding remains HireHello.
 - Supabase connection and migration verified: 0 applications, 0 packs, approved profile and 6 private PDFs; uploads verified byte-for-byte. Local tokens were not copied.
 - Live `/api/auth/session`: HTTP 200, unauthenticated; private state: HTTP 401 AUTH_REQUIRED. OAuth start: HTTP 200, Google authorization URL and binding cookie.
-- Automated browser sign-in displayed Failed to fetch; user manual sign-in requested. Hosted authenticated workflow and Sheets sync are not yet verified.
+- Automated browser sign-in displayed Failed to fetch; the owner completed sign-in in a normal Chrome tab. The deployed dashboard displayed the approved owner and migrated profile. Hosted sync completed at 20:02:04 IST with zero conflicts; persisted lastSyncedAt verified in Postgres.
 - OpenAI key authenticated; minimal generation failed with credit_balance_exhausted / insufficient_quota. No real resume generation sent to OpenAI.

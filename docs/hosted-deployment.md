@@ -1,6 +1,6 @@
 # Hosted deployment runbook
 
-Updated 13 October 2026. Production URL: **https://applyweave.vercel.app**. Vercel production secrets, Supabase schema, Google Web OAuth, and migration of the profile and six private PDFs are complete. Public session API returns 200; private APIs return 401 without sign-in; the OAuth start API returns a Google authorization URL and binding cookie. Browser sign-in/consent and live hosted Sheets sync remain pending. OpenAI generation is blocked by exhausted API credits.
+Updated 13 October 2026. Production URL: **https://applyweave.vercel.app**. Vercel production secrets, Supabase schema, Google Web OAuth, and migration of the profile and six private PDFs are complete. Public session API returns 200; private APIs return 401 without sign-in; the OAuth start API returns a Google authorization URL and binding cookie. The owner completed browser sign-in/consent, and live hosted Sheets sync completed at 20:02 IST with zero conflicts. OpenAI generation is blocked by exhausted API credits.
 
 ## Target and configuration
 
