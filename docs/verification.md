@@ -41,3 +41,12 @@ Chrome automation could not open the local app URL (`ERR_BLOCKED_BY_CLIENT`); re
 - Isolated browser QA verified the new resume upload form: a synthetic PDF was uploaded, the catalogue and profile version updated, and the success state rendered. The actual candidate profile/tracker was not used.
 - `scripts/migrate-hosted.ts` dry run validated the current local workspace and six PDFs; no live migration was performed.
 - Vercel and Render deployment configuration and a hosted runbook are provided. Supabase credentials, Google Web OAuth and live Gemini configuration/accepted data policy remain activation gates. Live deployment is not yet verified.
+
+## Live hosted activation — 13 October 2026
+
+- Production deployment: https://applyweave.vercel.app, Vercel Hobby + Supabase Free. All 18 server settings saved as Production Secret variables.
+- Google Web OAuth client created with the exact production callback; existing shared Google consent branding remains HireHello.
+- Supabase connection and migration verified: 0 applications, 0 packs, approved profile and 6 private PDFs; uploads verified byte-for-byte. Local tokens were not copied.
+- Live `/api/auth/session`: HTTP 200, unauthenticated; private state: HTTP 401 AUTH_REQUIRED. OAuth start: HTTP 200, Google authorization URL and binding cookie.
+- Automated browser sign-in displayed Failed to fetch; user manual sign-in requested. Hosted authenticated workflow and Sheets sync are not yet verified.
+- OpenAI key authenticated; minimal generation failed with credit_balance_exhausted / insufficient_quota. No real resume generation sent to OpenAI.

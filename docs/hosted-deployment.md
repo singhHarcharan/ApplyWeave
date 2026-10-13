@@ -1,6 +1,6 @@
 # Hosted deployment runbook
 
-Updated 13 October 2026. Cloud adapters and deployment configuration are implemented; a successful live deployment, migration and consent must be recorded separately. Never interpret passing local tests as live activation.
+Updated 13 October 2026. Production URL: **https://applyweave.vercel.app**. Vercel production secrets, Supabase schema, Google Web OAuth, and migration of the profile and six private PDFs are complete. Public session API returns 200; private APIs return 401 without sign-in; the OAuth start API returns a Google authorization URL and binding cookie. Browser sign-in/consent and live hosted Sheets sync remain pending. OpenAI generation is blocked by exhausted API credits.
 
 ## Target and configuration
 
@@ -12,9 +12,11 @@ Copy `.env.example` to the ignored `.env.hosted` (mode 600). Populate server-onl
 
 Use a Google OAuth **Web application** client for hosting. Keep the existing Desktop client for local use. Configure `OWNER_EMAIL` before exposing the app; the first arbitrary visitor cannot claim the workspace. Sign-in pins the verified Google subject and stores session state in Postgres. Tokens and OAuth state are AES-256-GCM encrypted with `TOKEN_ENCRYPTION_KEY` (32 random bytes in base64 or 64 hexadecimal characters). Keep a recovery copy of the key separately from database backups. The OAuth browser session survives cold starts; logout revokes it across instances.
 
-## Gemini activation
+## AI activation
 
-The user selected Gemini. Set `AI_PROVIDER=gemini`, an explicit supported `AI_MODEL`, and `AI_API_KEY` only after confirming the key's data policy and permitted spending. The current private setup file leaves AI disabled pending that confirmation.
+The user switched to OpenAI. Production uses `AI_PROVIDER=openai`, `AI_MODEL=gpt-5.4-mini`, and a server-only `AI_API_KEY`. Key authentication passed, but a minimal Responses request returned `credit_balance_exhausted` / `insufficient_quota`. Add API credits separately from a ChatGPT/Codex subscription before generation can be accepted as working. The app can still support manual preparation once signed in.
+
+Gemini remains an optional adapter. Its paid-service data policy was approved by the user, but no Gemini key was supplied. Switching providers requires explicit configuration; there is no automatic fallback.
 
 The researched starting model is `gemini-3.5-flash-lite`; verify its availability for the account before use. Google's [pricing](https://ai.google.dev/gemini-api/docs/pricing) and [terms](https://ai.google.dev/gemini-api/terms) distinguish unpaid-service data handling from paid-service handling. Unpaid services can use inputs/outputs for improvement and human review and instruct against submitting personal/confidential data. Do not send the real resume profile before resolving this. Hosting on a free tier does not make inference free.
 

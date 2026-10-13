@@ -4,13 +4,15 @@ One workspace for your job search: save a role, prepare grounded answers, review
 
 ## Current status — 13 October 2026
 
-**Current implementation: local, single-owner use. Required next release: hosted deployment on free tiers, with Vercel Hobby + Supabase Free as the recommended target and Render Free as an alternative. Cloud storage, Web OAuth, persistent sessions, hosted AI adapters and deployment configuration are now implemented. Live deployment/migration and provider consent are still pending. See the [hosted deployment runbook](docs/hosted-deployment.md).** Google sign-in and live Sheets sync have been verified on this computer. The extension is built; manual installation and a real company-portal pilot remain unconfirmed. The optional Sheets sidebar is not yet installed. Review the new FRONTEND and AI resumes before employer uploads.
+**Deployed at https://applyweave.vercel.app on Vercel Hobby with Supabase Free.** Production secrets and Google Web OAuth are configured. The database schema, approved profile and six private PDFs have been migrated and verified. Hosted sign-in and Sheets sync still need the browser consent/acceptance check; automated browser sign-in currently reports a fetch error although the sign-in API passes. OpenAI (`gpt-5.4-mini`) is configured, but the API account returned insufficient credits. Codex/ChatGPT subscription billing does not fund API calls. See the [hosted deployment runbook](docs/hosted-deployment.md).
+
+The local version remains available. The Chrome extension is built; manual installation and a real company-portal pilot remain unconfirmed. The optional Sheets sidebar is not installed. Review the FRONTEND and AI resumes before employer uploads. No employer application has been submitted by this system.
 
 - [Complete implementation and operating guide](docs/job-search-system-implementation-plan.html)
 - [API contract](docs/app-contract.md)
 - [Verification record and pending checks](docs/verification.md)
 
-## Start the app
+## Start the local app
 
 On this Mac, double-click **Start ApplyWeave.command**, or run:
 
@@ -29,20 +31,20 @@ The app is local to your computer. Personal information, application records, an
 | Layer | Current implementation |
 | --- | --- |
 | Web UI | React 19, TypeScript, Vite, custom CSS and Lucide icons |
-| API | Node.js, Express, Zod validation; loopback-only host/origin restrictions and CSRF checks |
-| Local persistence | Atomic JSON writes to `private/workspace.json`; private PDFs in `private/resumes/` |
-| Identity and tracker | Google Desktop OAuth with PKCE; verified owner sign-in; direct Google Sheets API sync |
-| Answer generation | Installed, signed-in Codex CLI; validated structured output, fact references and explicit approvals |
+| API | Node.js, Express, Zod; exact configured host/origin and CSRF checks; Vercel function when hosted |
+| Persistence | Local: atomic JSON and private PDFs. Hosted: Supabase Postgres and private Storage bucket |
+| Identity and tracker | Desktop OAuth locally, Web OAuth when hosted; PKCE and verified owner; direct Sheets API sync |
+| Answer generation | Local Codex CLI or hosted OpenAI/Gemini API; validated output, fact references and explicit approvals |
 | Browser helper | Chrome Manifest V3 extension with a persistent side panel and imported application bundle |
 | Optional Sheet UI | Bound Google Apps Script menu/sidebar and API installer |
 
-The React app calls the local API. The API persists workspace data, generates drafts through Codex, and syncs tracker rows with Google Sheets. A reviewed JSON bundle transfers one application to the extension; the extension does not directly connect to the backend or Google account.
+The React app calls the API at the same origin. The API persists workspace data, generates drafts through the configured provider, and syncs tracker rows with Google Sheets. A reviewed JSON bundle transfers one application to the extension; the extension does not directly connect to the backend or Google account.
 
 ## Sign in with Google
 
 The app now requires Google sign-in before loading your profile, applications, answer packs, or resumes. Click **Sign in with Google** on the welcome screen and use the workspace owner's account. Google identity is verified on the server; another Google account cannot open this private workspace. The existing profile email identifies the owner, then the Google account ID is pinned locally.
 
-An HttpOnly, SameSite session cookie keeps the browser signed in for up to seven days. Restarting the server ends sessions. **Sign out** locks the app and clears private data from the current UI; it preserves your Google Sheets grant for your next sign-in. **Disconnect Google** in Settings removes the stored Sheets token. The app remains a local, single-owner workspace; these controls do not turn it into a hosted multi-user service.
+An HttpOnly, SameSite session cookie keeps the browser signed in for up to seven days. Local server restarts end local sessions; hosted sessions persist in Postgres across cold starts. **Sign out** locks the app and clears private data from the current UI; it preserves your Google Sheets grant for your next sign-in. **Disconnect Google** in Settings removes the stored Sheets token. Both local and hosted modes are single-owner workspaces; this is not a multi-user service.
 
 ## The complete workflow
 
